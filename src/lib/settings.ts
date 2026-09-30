@@ -3,10 +3,6 @@ import { prisma } from "@/lib/db";
 // Configuración editable desde /admin (sección 25). Todo tiene un default
 // razonable para que el seed y el modo demo funcionen sin tocar nada.
 export const SETTINGS = {
-  leadPriceBasic: { key: "lead_price_basic", default: "10" },
-  leadPriceQualified: { key: "lead_price_qualified", default: "20" },
-  leadPricePremium: { key: "lead_price_premium", default: "35" },
-  leadPriceDefault: { key: "lead_price_default", default: "15" },
   maxAgentsDefault: { key: "max_agents_default", default: "3" },
   reactivationHours: { key: "reactivation_hours", default: "48" },
   // Sección 7: horas mínimas desde que el agente marca "Contacté al lead"
@@ -46,10 +42,6 @@ export async function getAllSettings() {
     ]),
   );
   return Object.fromEntries(entries) as Record<keyof typeof SETTINGS, string>;
-}
-
-export async function getDefaultLeadPrice(): Promise<number> {
-  return getSettingNumber(SETTINGS.leadPriceDefault);
 }
 
 export async function getDefaultMaxAgents(): Promise<number> {

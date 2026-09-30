@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { getDefaultLeadPrice } from "@/lib/settings";
 import { notify } from "@/lib/services/notifications";
 import { logEvent } from "@/lib/services/analytics";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
@@ -13,7 +12,6 @@ export async function createRequest(
   buyerProfileId: string,
   input: CreateRequestInput,
 ) {
-  const leadPrice = await getDefaultLeadPrice();
   const email = input.contactEmail?.trim().toLowerCase() || null;
 
   const buyerProfile = await prisma.buyerProfile.findUniqueOrThrow({
@@ -49,7 +47,9 @@ export async function createRequest(
       // El consentimiento ya se dio una sola vez al registrarse (sección 1).
       dataSharingConsent: true,
       maxAgents: input.maxAgents,
-      leadPrice,
+      // Columna heredada del viejo modelo de precio de lead; el costo real
+      // lo determina getUnlockCost() según operationType, no este campo.
+      leadPrice: 0,
       features: {
         create: features.map(([key, value]) => ({
           key,
