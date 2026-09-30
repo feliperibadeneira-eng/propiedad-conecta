@@ -21,8 +21,8 @@ export default async function AgentLeadsPage({
   const sp = await searchParams;
 
   const filters = {
-    operationType: sp.operationType as OperationType | undefined,
-    propertyType: sp.propertyType as PropertyType | undefined,
+    operationType: (sp.operationType || undefined) as OperationType | undefined,
+    propertyType: (sp.propertyType || undefined) as PropertyType | undefined,
     ciudad: sp.ciudad || undefined,
     sector: sp.sector || undefined,
     priceMin: sp.priceMin ? Number(sp.priceMin) : undefined,

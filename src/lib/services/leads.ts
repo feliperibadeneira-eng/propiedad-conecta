@@ -66,7 +66,7 @@ export async function getAvailableRequestsForAgent(
       sector: filters.sector
         ? { contains: filters.sector, mode: "insensitive" }
         : undefined,
-      bedrooms: filters.bedrooms ? { gte: filters.bedrooms } : undefined,
+      bedrooms: filters.bedrooms != null ? { gte: filters.bedrooms } : undefined,
       ...(filters.priceMin != null || filters.priceMax != null
         ? {
             priceMin: filters.priceMax != null ? { lte: filters.priceMax } : undefined,
