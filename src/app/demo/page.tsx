@@ -19,7 +19,7 @@ export default function DemoPage() {
           pedir la devolución de su crédito.
         </p>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <Card className="p-5 text-center">
             <h2 className="font-semibold">Comprador demo</h2>
             <p className="mt-1 text-xs text-muted">
@@ -37,17 +37,6 @@ export default function DemoPage() {
               Ya tiene créditos cargados para desbloquear leads.
             </p>
             <form action={demoLoginAction.bind(null, "AGENT")} className="mt-4">
-              <Button type="submit" className="w-full">
-                Entrar
-              </Button>
-            </form>
-          </Card>
-          <Card className="p-5 text-center">
-            <h2 className="font-semibold">Admin demo</h2>
-            <p className="mt-1 text-xs text-muted">
-              Ve métricas, usuarios y configuración.
-            </p>
-            <form action={demoLoginAction.bind(null, "ADMIN")} className="mt-4">
               <Button type="submit" className="w-full">
                 Entrar
               </Button>
