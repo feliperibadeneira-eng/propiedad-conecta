@@ -13,9 +13,13 @@ const PACKAGE_LABELS: Record<CreditPackageType, string> = {
 
 // Sección 4: el agente elige un paquete y lo manda a revisión. NO se
 // acredita ningún crédito acá — eso solo pasa en approveCreditPurchase.
+// El comprobante es obligatorio para solicitudes nuevas (lo exige la acción
+// que llama a esto, no este servicio), pero la columna sigue siendo
+// nullable porque las solicitudes previas a este campo no lo tienen.
 export async function createCreditPurchaseRequest(
   agentProfileId: string,
   packageKey: CreditPackageType,
+  receipt: { data: Uint8Array<ArrayBuffer>; mimeType: string },
 ) {
   const pkg = getCreditPackage(packageKey);
   const request = await prisma.creditPurchaseRequest.create({
@@ -25,6 +29,8 @@ export async function createCreditPurchaseRequest(
       amount: pkg.price,
       credits: pkg.credits,
       status: "PENDING",
+      receiptImageData: receipt.data,
+      receiptImageMimeType: receipt.mimeType,
     },
   });
   return request;
@@ -34,14 +40,19 @@ export async function listCreditPurchasesForAgent(agentProfileId: string) {
   return prisma.creditPurchaseRequest.findMany({
     where: { agentId: agentProfileId },
     orderBy: { createdAt: "desc" },
+    omit: { receiptImageData: true },
   });
 }
 
+// omit: receiptImageData en los listados — son potencialmente muchas filas
+// y no hace falta traer los bytes completos solo para mostrar una tabla.
+// La imagen se lee una sola vez, en /api/comprobantes/[id].
 export async function listPendingCreditPurchases() {
   return prisma.creditPurchaseRequest.findMany({
     where: { status: "PENDING" },
     include: { agent: { include: { user: true } } },
     orderBy: { createdAt: "asc" },
+    omit: { receiptImageData: true },
   });
 }
 
@@ -49,6 +60,7 @@ export async function listAllCreditPurchases() {
   return prisma.creditPurchaseRequest.findMany({
     include: { agent: { include: { user: true } } },
     orderBy: { createdAt: "desc" },
+    omit: { receiptImageData: true },
   });
 }
 

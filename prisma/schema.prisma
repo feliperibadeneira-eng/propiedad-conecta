@@ -316,6 +316,12 @@ model CreditPurchaseRequest {
   amount  Decimal           @db.Decimal(12, 2)
   credits Int
 
+  // Comprobante de pago (captura/foto). Nullable porque las solicitudes
+  // creadas antes de este campo no lo tienen; para las nuevas, la capa de
+  // aplicación lo exige (ver submitCreditPurchaseAction).
+  receiptImageData     Bytes?
+  receiptImageMimeType String?
+
   status          CreditPurchaseStatus @default(PENDING)
   createdAt       DateTime             @default(now())
   reviewedAt      DateTime?

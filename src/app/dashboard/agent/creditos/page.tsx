@@ -3,7 +3,7 @@ import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { listCreditLedger, getUnlockCost } from "@/lib/services/credits";
 import { listCreditPurchasesForAgent } from "@/lib/services/creditPurchases";
 import { CREDIT_PACKAGES } from "@/lib/services/creditPackages";
-import { getPaymentInstructions } from "@/lib/settings";
+import { getPaymentInstructions, getPayphoneLinks, getDeunaQrImage } from "@/lib/settings";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -19,12 +19,21 @@ const PACKAGE_ORDER: CreditPackageType[] = ["STARTER", "PRO", "PREMIUM"];
 
 export default async function AgentCreditsPage() {
   const user = await requireAgent();
-  const [creditsBalance, ledger, purchases, paymentInstructions] = await Promise.all([
-    getCreditsBalance(user.agentProfileId!),
-    listCreditLedger(user.agentProfileId!, 30),
-    listCreditPurchasesForAgent(user.agentProfileId!),
-    getPaymentInstructions(),
-  ]);
+  const [creditsBalance, ledger, purchases, paymentInstructions, payphoneLinks, deunaQrImage] =
+    await Promise.all([
+      getCreditsBalance(user.agentProfileId!),
+      listCreditLedger(user.agentProfileId!, 30),
+      listCreditPurchasesForAgent(user.agentProfileId!),
+      getPaymentInstructions(),
+      getPayphoneLinks(),
+      getDeunaQrImage(),
+    ]);
+
+  const payphoneLinkByPackage: Record<CreditPackageType, string> = {
+    STARTER: payphoneLinks.credits10,
+    PRO: payphoneLinks.credits50,
+    PREMIUM: payphoneLinks.credits100,
+  };
 
   return (
     <>
@@ -77,6 +86,7 @@ export default async function AgentCreditsPage() {
                       price={pkg.price}
                       credits={pkg.credits}
                       paymentInstructions={paymentInstructions}
+                      payphoneLink={payphoneLinkByPackage[key]}
                     />
                   </div>
                 </Card>
@@ -87,6 +97,23 @@ export default async function AgentCreditsPage() {
             Los créditos no expiran, no son transferibles entre agentes y no
             pueden retirarse como dinero.
           </p>
+
+          {deunaQrImage && (
+            <Card className="mt-5 p-6 text-center">
+              <h3 className="font-semibold">También podés pagar con Deuna</h3>
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URI, no un asset estático */}
+              <img
+                src={deunaQrImage}
+                alt="QR de Deuna para pagar créditos"
+                className="mx-auto mt-3 h-48 w-48 rounded-xl border border-border object-contain"
+              />
+              {paymentInstructions && (
+                <p className="mt-3 whitespace-pre-line text-sm text-muted">
+                  {paymentInstructions}
+                </p>
+              )}
+            </Card>
+          )}
         </div>
 
         <div className="mt-10">

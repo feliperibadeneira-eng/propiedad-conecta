@@ -2,7 +2,7 @@
 
 import { useActionState, useRef } from "react";
 import { submitCreditPurchaseAction, type SubmitPurchaseState } from "./actions";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { formatUSD } from "@/lib/format";
 import type { CreditPackageType } from "@/generated/prisma/enums";
 
@@ -14,12 +14,14 @@ export function BuyCreditsDialog({
   price,
   credits,
   paymentInstructions,
+  payphoneLink,
 }: {
   packageKey: CreditPackageType;
   name: string;
   price: number;
   credits: number;
   paymentInstructions: string;
+  payphoneLink: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, formAction, pending] = useActionState(
@@ -55,7 +57,7 @@ export function BuyCreditsDialog({
             </Button>
           </div>
         ) : (
-          <form action={formAction} className="p-6">
+          <form action={formAction} className="p-6" encType="multipart/form-data">
             <h2 className="text-lg font-bold">Completa tu pago</h2>
             <div className="mt-3 flex items-center justify-between rounded-xl bg-surface-hover px-4 py-3">
               <span className="text-sm text-muted">
@@ -63,6 +65,17 @@ export function BuyCreditsDialog({
               </span>
               <span className="text-lg font-bold">{formatUSD(price)}</span>
             </div>
+
+            {payphoneLink && (
+              <a
+                href={payphoneLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClasses("accent2", "md", "mt-4 w-full")}
+              >
+                Pagar con PayPhone
+              </a>
+            )}
 
             <div className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted">
               {paymentInstructions ? (
@@ -74,6 +87,23 @@ export function BuyCreditsDialog({
                   créditos.
                 </p>
               )}
+            </div>
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Comprobante de pago
+              </label>
+              <input
+                name="receipt"
+                type="file"
+                accept="image/*"
+                required
+                className="block w-full text-sm text-muted file:mr-3 file:rounded-xl file:border-0 file:bg-surface-hover file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-foreground"
+              />
+              <p className="mt-1 text-xs text-muted-2">
+                Sube una captura o foto del comprobante de pago (PayPhone o
+                Deuna). Es obligatorio para enviar la solicitud.
+              </p>
             </div>
 
             <p className="mt-4 text-sm font-medium">¿Ya realizaste el pago?</p>

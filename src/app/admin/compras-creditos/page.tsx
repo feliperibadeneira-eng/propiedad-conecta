@@ -59,6 +59,16 @@ export default async function AdminCreditPurchasesPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {p.receiptImageMimeType && (
+                      <a
+                        href={`/api/comprobantes/${p.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={buttonClasses("secondary", "sm")}
+                      >
+                        Ver comprobante
+                      </a>
+                    )}
                     <form action={approveCreditPurchaseAction.bind(null, p.id)}>
                       <button type="submit" className={buttonClasses("primary", "sm")}>
                         Aprobar
@@ -83,6 +93,7 @@ export default async function AdminCreditPurchasesPage() {
                 <th className="pb-2">Créditos</th>
                 <th className="pb-2">Fecha</th>
                 <th className="pb-2">Estado</th>
+                <th className="pb-2">Comprobante</th>
               </tr>
             </thead>
             <tbody>
@@ -97,6 +108,20 @@ export default async function AdminCreditPurchasesPage() {
                     <Badge tone={STATUS_TONE[p.status]}>
                       {CREDIT_PURCHASE_STATUS_LABELS[p.status]}
                     </Badge>
+                  </td>
+                  <td className="py-2.5">
+                    {p.receiptImageMimeType ? (
+                      <a
+                        href={`/api/comprobantes/${p.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent underline underline-offset-2"
+                      >
+                        Ver
+                      </a>
+                    ) : (
+                      <span className="text-muted-2">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

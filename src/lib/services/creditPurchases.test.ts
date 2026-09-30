@@ -18,6 +18,7 @@ import { PurchaseError } from "./purchase";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
+const FAKE_RECEIPT = { data: new Uint8Array([1, 2, 3]), mimeType: "image/png" };
 
 async function makeAgent() {
   const user = await prisma.user.create({
@@ -66,7 +67,7 @@ after(async () => {
 
 test("crear una solicitud de compra de créditos (paquete Starter)", async () => {
   const before = await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } });
-  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER", FAKE_RECEIPT);
   assert.equal(req.status, "PENDING");
   assert.equal(req.credits, CREDIT_PACKAGES.STARTER.credits);
   assert.equal(Number(req.amount), CREDIT_PACKAGES.STARTER.price);
@@ -78,7 +79,7 @@ test("crear una solicitud de compra de créditos (paquete Starter)", async () =>
 
 test("crear solicitudes de compra para cada paquete (Starter/Pro/Premium)", async () => {
   for (const key of ["STARTER", "PRO", "PREMIUM"] as const) {
-    const req = await createCreditPurchaseRequest(otherAgent.profile.id, key);
+    const req = await createCreditPurchaseRequest(otherAgent.profile.id, key, FAKE_RECEIPT);
     assert.equal(req.package, key);
     assert.equal(req.credits, CREDIT_PACKAGES[key].credits);
   }
@@ -87,14 +88,14 @@ test("crear solicitudes de compra para cada paquete (Starter/Pro/Premium)", asyn
 });
 
 test("un pago PENDING no acredita créditos", async () => {
-  const req = await createCreditPurchaseRequest(agent.profile.id, "PRO");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "PRO", FAKE_RECEIPT);
   const profile = await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } });
   assert.equal(profile.creditsBalance, 0);
   assert.equal(req.status, "PENDING");
 });
 
 test("un agente no puede aprobar sus propios pagos", async () => {
-  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER", FAKE_RECEIPT);
   await assert.rejects(
     () => approveCreditPurchase(agent.user.id, req.id),
     PurchaseError,
@@ -104,7 +105,7 @@ test("un agente no puede aprobar sus propios pagos", async () => {
 });
 
 test("un usuario no administrador no puede aprobar pagos", async () => {
-  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER", FAKE_RECEIPT);
   // otherAgent tampoco es admin, y ni siquiera es el dueño del pago.
   await assert.rejects(
     () => approveCreditPurchase(otherAgent.user.id, req.id),
@@ -114,7 +115,7 @@ test("un usuario no administrador no puede aprobar pagos", async () => {
 
 test("un administrador puede aprobar y acredita exactamente los créditos del paquete", async () => {
   const before = await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } });
-  const req = await createCreditPurchaseRequest(agent.profile.id, "PREMIUM");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "PREMIUM", FAKE_RECEIPT);
 
   const approved = await approveCreditPurchase(admin.id, req.id);
   assert.equal(approved.status, "APPROVED");
@@ -135,7 +136,7 @@ test("un administrador puede aprobar y acredita exactamente los créditos del pa
 });
 
 test("aprobar dos veces no duplica los créditos", async () => {
-  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "STARTER", FAKE_RECEIPT);
   await approveCreditPurchase(admin.id, req.id);
   const afterFirst = await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } });
 
@@ -149,7 +150,7 @@ test("aprobar dos veces no duplica los créditos", async () => {
 
 test("rechazar no acredita créditos", async () => {
   const before = await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } });
-  const req = await createCreditPurchaseRequest(agent.profile.id, "PRO");
+  const req = await createCreditPurchaseRequest(agent.profile.id, "PRO", FAKE_RECEIPT);
 
   const rejected = await rejectCreditPurchase(admin.id, req.id, "Comprobante ilegible");
   assert.equal(rejected.status, "REJECTED");
