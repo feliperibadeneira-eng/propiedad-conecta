@@ -1,5 +1,5 @@
 export const DEMO_EMAILS = {
-  BUYER: "demo-comprador@propertymatch.test",
-  AGENT: "demo-agente@propertymatch.test",
-  ADMIN: "demo-admin@propertymatch.test",
+  BUYER: "demo-comprador@propiedadconecta.test",
+  AGENT: "demo-agente@propiedadconecta.test",
+  ADMIN: "demo-admin@propiedadconecta.test",
 } as const;

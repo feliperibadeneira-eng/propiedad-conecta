@@ -2,7 +2,7 @@ import { PublicNav } from "@/components/PublicNav";
 import { Card } from "@/components/ui/Card";
 import { RegisterForm } from "./RegisterForm";
 
-export const metadata = { title: "Registro de agentes — PropertyMatch" };
+export const metadata = { title: "Registro de agentes — Propiedad Conecta" };
 
 export default function AgentRegisterPage() {
   return (

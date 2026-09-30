@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "propertymatch",
+      "name": "propiedad-conecta",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3100,

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { RegisterForm } from "./RegisterForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Crear cuenta — PropertyMatch" };
+export const metadata = { title: "Crear cuenta — Propiedad Conecta" };
 
 export default async function BuyerRegisterPage() {
   const user = await getCurrentUser();

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireBuyer } from "@/lib/auth";
 import { getBuyerRequestDetail } from "@/lib/services/requests";
+import { BRAND_NAME } from "@/lib/brand";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -139,7 +140,7 @@ export default async function BuyerRequestDetailPage({
                   <a
                     href={buildWhatsAppLink(
                       p.agent.whatsapp || p.agent.user.phone || "",
-                      `Hola ${p.agent.user.name}, te contacto por PropertyMatch.`,
+                      `Hola ${p.agent.user.name}, te contacto por ${BRAND_NAME}.`,
                     )}
                     target="_blank"
                     className={buttonClasses("accent2", "sm")}

@@ -15,7 +15,7 @@ import { PublicNav } from "@/components/PublicNav";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 
 export default function HomePage() {
   return (
@@ -28,15 +28,14 @@ export default function HomePage() {
             PropTech para Ecuador
           </Badge>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
-            Encuentra la propiedad que realmente estás buscando.
+            {BRAND_TAGLINE}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg text-muted">
-            Cuéntanos exactamente qué necesitas y conecta con agentes
-            inmobiliarios que pueden ayudarte a encontrarla.
+            {`Dinos qué propiedad estás buscando y conecta con agentes que pueden ayudarte a encontrarla.`}
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/buscar" className={buttonClasses("primary", "lg")}>
-              Estoy buscando una propiedad
+              Publicar lo que busco
             </Link>
             <Link
               href="/agente/registro"

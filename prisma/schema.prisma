@@ -1,4 +1,4 @@
-// Modelo de datos de PropertyMatch (MVP de marketplace de demanda inmobiliaria).
+// Modelo de datos de Propiedad Conecta (MVP de marketplace de demanda inmobiliaria).
 // Ver README.md para el resumen del flujo de negocio.
 
 generator client {

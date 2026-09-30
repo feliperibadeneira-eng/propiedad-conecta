@@ -1,5 +1,5 @@
 {
-  "name": "propertymatch",
+  "name": "propiedad-conecta",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "postinstall": "prisma generate",
-    "db:start": "prisma dev --name propertymatch --detach",
+    "db:start": "prisma dev --name propiedad-conecta --detach",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts"

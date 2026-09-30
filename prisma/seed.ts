@@ -49,9 +49,9 @@ async function main() {
   console.log("Administrador...");
   const admin = await prisma.user.create({
     data: {
-      email: "demo-admin@propertymatch.test",
+      email: "demo-admin@propiedadconecta.test",
       passwordHash: await hashPassword(DEMO_PASSWORD),
-      name: "Admin PropertyMatch",
+      name: "Admin Propiedad Conecta",
       role: "ADMIN",
     },
   });
@@ -59,7 +59,7 @@ async function main() {
   console.log("Agentes (5)...");
   const agentSeeds = [
     {
-      email: "demo-agente@propertymatch.test",
+      email: "demo-agente@propiedadconecta.test",
       name: "María Fernanda Ortiz",
       phone: "0991234567",
       company: "Ortiz Bienes Raíces",
@@ -70,7 +70,7 @@ async function main() {
       description: "Especialista en el valle de Cumbayá y Tumbaco.",
     },
     {
-      email: "agente2@propertymatch.test",
+      email: "agente2@propiedadconecta.test",
       name: "Carlos Andrade",
       phone: "0987654321",
       company: "Andrade Propiedades",
@@ -81,7 +81,7 @@ async function main() {
       description: "10 años vendiendo en Guayaquil y Samborondón.",
     },
     {
-      email: "agente3@propertymatch.test",
+      email: "agente3@propiedadconecta.test",
       name: "Gabriela Salazar",
       phone: "0976543210",
       company: null,
@@ -92,7 +92,7 @@ async function main() {
       description: "Asesora independiente en Cuenca, enfocada en alquileres.",
     },
     {
-      email: "agente4@propertymatch.test",
+      email: "agente4@propiedadconecta.test",
       name: "Diego Paredes",
       phone: "0965432109",
       company: "Paredes Comercial",
@@ -107,7 +107,7 @@ async function main() {
       startingCredits: 0,
     },
     {
-      email: "agente5@propertymatch.test",
+      email: "agente5@propiedadconecta.test",
       name: "Valentina Ríos",
       phone: "0954321098",
       company: "Ríos Inmobiliaria",
@@ -211,11 +211,11 @@ async function main() {
 
   console.log("Compradores y solicitudes (10)...");
   const buyerSeeds = [
-    { email: "demo-comprador@propertymatch.test", name: "Andrés Vega", phone: "0991112222" },
-    { email: "comprador2@propertymatch.test", name: "Paola Chávez", phone: "0992223333" },
-    { email: "comprador3@propertymatch.test", name: "Luis Morales", phone: "0993334444" },
-    { email: "comprador4@propertymatch.test", name: "Sofía Naranjo", phone: "0994445555" },
-    { email: "comprador5@propertymatch.test", name: "Jorge Espín", phone: "0995556666" },
+    { email: "demo-comprador@propiedadconecta.test", name: "Andrés Vega", phone: "0991112222" },
+    { email: "comprador2@propiedadconecta.test", name: "Paola Chávez", phone: "0992223333" },
+    { email: "comprador3@propiedadconecta.test", name: "Luis Morales", phone: "0993334444" },
+    { email: "comprador4@propiedadconecta.test", name: "Sofía Naranjo", phone: "0994445555" },
+    { email: "comprador5@propiedadconecta.test", name: "Jorge Espín", phone: "0995556666" },
   ];
 
   const buyers = [];

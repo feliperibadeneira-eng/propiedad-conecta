@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/Button";
 import { RequestForm } from "./RequestForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Publica tu solicitud — PropertyMatch" };
+export const metadata = { title: "Publica tu solicitud — Propiedad Conecta" };
 
 export default async function BuscarPage() {
   const user = await getCurrentUser();

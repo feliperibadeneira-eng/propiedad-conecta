@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { demoLoginAction } from "./actions";
 
-export const metadata = { title: "Modo demo — PropertyMatch" };
+export const metadata = { title: "Modo demo — Propiedad Conecta" };
 
 export default function DemoPage() {
   return (

@@ -1,4 +1,4 @@
-# PropertyMatch
+# Propiedad Conecta
 
 MVP de un marketplace inmobiliario de **demanda** para Ecuador: en vez de
 publicar propiedades, los compradores/arrendatarios publican exactamente qué
@@ -6,7 +6,7 @@ están buscando, y los agentes inmobiliarios pagan para desbloquear su
 contacto. Ver la hipótesis que este MVP busca validar en la sección
 "Principio" más abajo.
 
-`PropertyMatch` es un nombre temporal — está centralizado en
+El nombre de marca (`Propiedad Conecta`) está centralizado en
 [`src/lib/brand.ts`](src/lib/brand.ts) para poder cambiarlo fácilmente.
 
 ## Instalación
@@ -37,9 +37,9 @@ Cuentas demo (contraseña `demo1234` para las tres):
 
 | Rol | Email |
 |---|---|
-| Admin | `demo-admin@propertymatch.test` |
-| Agente | `demo-agente@propertymatch.test` (+ `agente2`..`agente5@propertymatch.test`), 20 créditos c/u |
-| Comprador | `demo-comprador@propertymatch.test` (+ `comprador2`..`comprador5@propertymatch.test`) |
+| Admin | `demo-admin@propiedadconecta.test` |
+| Agente | `demo-agente@propiedadconecta.test` (+ `agente2`..`agente5@propiedadconecta.test`), 20 créditos c/u |
+| Comprador | `demo-comprador@propiedadconecta.test` (+ `comprador2`..`comprador5@propiedadconecta.test`) |
 
 ## Variables de entorno
 
