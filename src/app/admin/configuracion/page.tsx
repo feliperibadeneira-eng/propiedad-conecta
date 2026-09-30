@@ -10,10 +10,6 @@ import { updateSettingsAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 const LABELS: Record<keyof typeof SETTINGS, string> = {
-  leadPriceDefault: "Precio de lead por defecto (USD)",
-  leadPriceBasic: "Nivel Basic (USD)",
-  leadPriceQualified: "Nivel Qualified (USD)",
-  leadPricePremium: "Nivel Premium (USD)",
   maxAgentsDefault: "Máximo de agentes por defecto",
   reactivationHours: "Horas sin contacto antes de poder reactivar",
   refundEligibleHours: "Horas mínimas para pedir devolución de crédito",
@@ -31,8 +27,9 @@ export default async function AdminSettingsPage() {
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
         <p className="mt-1 text-sm text-muted">
-          El precio por defecto se asigna a cada solicitud nueva en el
-          momento en que se publica.
+          Ajustes generales del marketplace: límites de agentes por
+          solicitud, ventanas de reactivación y devolución de créditos, y
+          las instrucciones de pago para comprar créditos.
         </p>
 
         <form action={updateSettingsAction} className="mt-6">
