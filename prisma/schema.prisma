@@ -1,0 +1,453 @@
+// Modelo de datos de PropertyMatch (MVP de marketplace de demanda inmobiliaria).
+// Ver README.md para el resumen del flujo de negocio.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  BUYER
+  AGENT
+  ADMIN
+}
+
+enum OperationType {
+  COMPRAR
+  ALQUILAR
+}
+
+enum PropertyType {
+  DEPARTAMENTO
+  CASA
+  TERRENO
+  OFICINA
+  LOCAL_COMERCIAL
+  BODEGA
+  OTRO
+}
+
+enum ContactPreference {
+  WHATSAPP
+  LLAMADA
+  EMAIL
+}
+
+// Estado de la solicitud tal como lo ve el comprador (sección 10).
+enum RequestStatus {
+  BUSCANDO
+  EN_PROCESO
+  PAUSADA
+  CERRADA
+}
+
+// Estado de una compra individual de lead (sección 19-23, más la garantía
+// de créditos). Varias compras pueden coexistir sobre la misma solicitud
+// (hasta requestId.maxAgents).
+enum LeadPurchaseStatus {
+  PURCHASED
+  CONTACTED
+  RESPONDED
+  NO_CONTACT
+  NO_MATCH
+  RELEASED
+  REACTIVATED
+  REFUND_REQUESTED
+  REFUNDED
+  APPOINTMENT_SCHEDULED
+  CLOSED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum LeadTier {
+  BASIC
+  QUALIFIED
+  PREMIUM
+}
+
+// Paquetes de créditos que un agente puede comprar (sección 2). Precios y
+// créditos fijos, no configurables — ver lib/services/creditPackages.ts.
+enum CreditPackageType {
+  STARTER
+  PRO
+  PREMIUM
+}
+
+// Estado de una solicitud de compra de créditos (sección 4): el pago es
+// manual, así que empieza en PENDING y un admin lo revisa.
+enum CreditPurchaseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ---------- Auth ----------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         UserRole
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  buyerProfile            BuyerProfile?
+  agentProfile            AgentProfile?
+  sessions                Session[]
+  notifications           Notification[]
+  auditLogs               AuditLog[]
+  reviewedCreditPurchases CreditPurchaseRequest[]
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------- Perfiles ----------
+
+model BuyerProfile {
+  id                       String            @id @default(uuid())
+  userId                   String            @unique
+  whatsapp                 String?
+  contactPreference        ContactPreference @default(WHATSAPP)
+  // Autorización dada una sola vez, al registrarse (sección 1), en vez de
+  // pedirla de nuevo en cada solicitud.
+  contactConsent           Boolean           @default(false)
+  // Señal de confianza "ha confirmado que sigue buscando" (sección 3): se
+  // actualiza cuando elige esa opción en "¿Qué ocurrió?" sobre cualquiera
+  // de sus solicitudes.
+  lastConfirmedSearchingAt DateTime?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests PropertyRequest[]
+}
+
+model AgentProfile {
+  id              String         @id @default(uuid())
+  userId          String         @unique
+  photoUrl        String?
+  whatsapp        String?
+  company         String?
+  city            String?
+  yearsExperience Int?
+  workAreas       String[]       @default([])
+  propertyTypes   PropertyType[] @default([])
+  description     String?
+  // Sistema de créditos (sección 5): cada lead desbloqueado consume 1.
+  creditsBalance  Int            @default(20)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchases       LeadPurchase[]
+  payments        Payment[]
+  creditLedger    CreditLedgerEntry[]
+  creditPurchases CreditPurchaseRequest[]
+}
+
+// ---------- Solicitudes (el "inventario" de demanda) ----------
+
+model PropertyRequest {
+  id            String        @id @default(uuid())
+  buyerId       String
+  operationType OperationType
+  propertyType  PropertyType
+
+  provincia String
+  ciudad    String
+  sector    String?
+
+  priceMin Decimal @db.Decimal(12, 2)
+  priceMax Decimal @db.Decimal(12, 2)
+
+  bedrooms        Int?
+  bathrooms       Int?
+  minSquareMeters Int?
+  parkingSpots    Int?
+  moveInDate      DateTime?
+
+  // "Cuéntales un poco sobre ti" (opcional): ayuda al agente a confiar más
+  // en la solicitud, nunca es obligatorio para publicar.
+  occupation      String?
+  searchReason    String?
+  additionalNotes String?
+
+  contactName        String
+  contactPhone       String
+  contactEmail       String?
+  contactPreference  ContactPreference
+  dataSharingConsent Boolean           @default(false)
+
+  maxAgents Int     @default(3)
+  leadPrice Decimal @db.Decimal(12, 2)
+
+  status RequestStatus @default(BUSCANDO)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  buyer         BuyerProfile        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  features      RequestFeature[]
+  purchases     LeadPurchase[]
+  payments      Payment[]
+  exchanges     ContactExchange[]
+  statusHistory LeadStatusHistory[]
+
+  @@index([buyerId])
+  @@index([status])
+  @@index([propertyType])
+  @@index([provincia, ciudad, sector])
+  @@index([priceMin, priceMax])
+  @@index([createdAt])
+}
+
+// Características adicionales, guardadas como pares clave/valor para no
+// llenar PropertyRequest de columnas nulas (amoblado, ascensor, terraza...).
+model RequestFeature {
+  id        String   @id @default(uuid())
+  requestId String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+
+  request PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, key])
+  @@index([requestId])
+}
+
+// ---------- Compra de leads ----------
+
+model LeadPurchase {
+  id        String @id @default(uuid())
+  requestId String
+  agentId   String
+  paymentId String @unique
+
+  status      LeadPurchaseStatus @default(PURCHASED)
+  pricePaid   Decimal            @db.Decimal(12, 2)
+  creditsUsed Int                @default(1)
+
+  purchasedAt       DateTime  @default(now())
+  contactedAt       DateTime?
+  refundRequestedAt DateTime?
+  refundedAt        DateTime?
+  releasedAt        DateTime?
+  releaseReason     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request       PropertyRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  agent         AgentProfile        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  payment       Payment             @relation(fields: [paymentId], references: [id])
+  exchange      ContactExchange?
+  statusHistory LeadStatusHistory[]
+  ledgerEntries CreditLedgerEntry[]
+
+  // Un agente no puede comprar el mismo lead dos veces (regla 4), incluso
+  // si el lead se reactiva más adelante para otros agentes.
+  @@unique([requestId, agentId])
+  @@index([requestId])
+  @@index([agentId])
+  @@index([status])
+}
+
+// Ledger de créditos (sección 6/10): registro inmutable de cada movimiento
+// de crédito, para poder auditar que el saldo de AgentProfile siempre
+// coincida con la suma de sus movimientos.
+model CreditLedgerEntry {
+  id                      String   @id @default(uuid())
+  agentId                 String
+  // Negativo = consumo (desbloqueo), positivo = compra aprobada, devolución
+  // o ajuste manual.
+  amount                  Int
+  balanceAfter            Int
+  reason                  String
+  // Texto legible para "Historial de créditos" (sección 7), ej. "Compra de
+  // paquete Pro" o "Desbloqueo de solicitud de compra".
+  description             String?
+  leadPurchaseId          String?
+  creditPurchaseRequestId String?
+  createdAt               DateTime @default(now())
+
+  agent                 AgentProfile           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  leadPurchase          LeadPurchase?          @relation(fields: [leadPurchaseId], references: [id], onDelete: SetNull)
+  creditPurchaseRequest CreditPurchaseRequest? @relation(fields: [creditPurchaseRequestId], references: [id], onDelete: SetNull)
+
+  @@index([agentId])
+  @@index([leadPurchaseId])
+  @@index([creditPurchaseRequestId])
+}
+
+// Solicitud de compra de créditos con pago manual (sección 4): el agente
+// elige un paquete y "envía a revisión"; los créditos solo se acreditan
+// cuando un admin la aprueba (ver purchase.ts / creditPurchases.ts).
+model CreditPurchaseRequest {
+  id      String            @id @default(uuid())
+  agentId String
+  package CreditPackageType
+  amount  Decimal           @db.Decimal(12, 2)
+  credits Int
+
+  status          CreditPurchaseStatus @default(PENDING)
+  createdAt       DateTime             @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionReason String?
+
+  agent         AgentProfile        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  reviewer      User?               @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+  ledgerEntries CreditLedgerEntry[]
+
+  @@index([agentId])
+  @@index([status])
+}
+
+// ---------- Pagos ----------
+
+model Payment {
+  id        String @id @default(uuid())
+  agentId   String
+  // requestId permite crear el Payment antes de que exista el LeadPurchase
+  // (el LeadPurchase solo se crea cuando el webhook confirma el pago).
+  requestId String
+
+  amount   Decimal       @db.Decimal(12, 2)
+  currency String        @default("usd")
+  status   PaymentStatus @default(PENDING)
+
+  stripePaymentIntentId String? @unique
+
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  agent        AgentProfile    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  request      PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  leadPurchase LeadPurchase?
+
+  @@index([agentId])
+  @@index([requestId])
+  @@index([status])
+}
+
+// ---------- Intercambio de contacto ----------
+
+model ContactExchange {
+  id             String   @id @default(uuid())
+  requestId      String
+  leadPurchaseId String   @unique
+  buyerId        String
+  agentId        String
+  revealedAt     DateTime @default(now())
+
+  request      PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  leadPurchase LeadPurchase    @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([buyerId])
+  @@index([agentId])
+}
+
+// Historial de cambios de estado, tanto de la solicitud como de una compra
+// puntual (se guarda como texto libre para poder registrar ambos enums).
+model LeadStatusHistory {
+  id              String   @id @default(uuid())
+  requestId       String
+  leadPurchaseId  String?
+  fromStatus      String
+  toStatus        String
+  reason          String?
+  changedByUserId String?
+  createdAt       DateTime @default(now())
+
+  request      PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  leadPurchase LeadPurchase?   @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+// ---------- Notificaciones ----------
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+// ---------- Admin ----------
+
+model AdminSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Eventos de analítica simple (sección 34), guardados en DB en vez de un
+// proveedor externo.
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  type      String
+  userId    String?
+  requestId String?
+  agentId   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([requestId])
+}
