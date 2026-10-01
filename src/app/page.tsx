@@ -183,9 +183,6 @@ export default function HomePage() {
             © {new Date().getFullYear()} {BRAND_NAME}. Ecuador.
           </p>
           <div className="flex gap-4">
-            <Link href="/demo" className="hover:text-foreground">
-              Ver demo
-            </Link>
             <Link href="/login" className="hover:text-foreground">
               Ingresar
             </Link>
