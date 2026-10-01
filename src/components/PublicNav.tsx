@@ -16,7 +16,9 @@ export async function PublicNav() {
   return (
     <header className="border-b border-border bg-background-alt/80 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4">
-        <Link href="/" className="flex items-center">
+        {/* Logueado: el logo lleva a su panel (mismo destino que "Mi
+            cuenta"), no a la home pública. Sin sesión, mantiene "/". */}
+        <Link href={dashboardHref ?? "/"} className="flex items-center">
           <Image
             src="/logo.png"
             alt="Propiedad Conecta"
