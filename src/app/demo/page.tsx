@@ -1,14 +1,19 @@
-import { PublicNav } from "@/components/PublicNav";
+import { requireAdmin } from "@/lib/auth";
+import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { ADMIN_NAV_LINKS } from "../admin/nav";
 import { demoLoginAction } from "./actions";
 
 export const metadata = { title: "Modo demo — Propiedad Conecta" };
 
-export default function DemoPage() {
+// Mismo patrón que el resto de /admin: requireAdmin() redirige a /login si
+// quien visita no es ADMIN (sección "No quiero acceso público a /demo").
+export default async function DemoPage() {
+  const user = await requireAdmin();
   return (
     <>
-      <PublicNav />
+      <DashboardHeader userName={user.name} links={ADMIN_NAV_LINKS} />
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
         <h1 className="text-2xl font-bold tracking-tight">Modo demo</h1>
         <p className="mt-2 text-sm text-muted">

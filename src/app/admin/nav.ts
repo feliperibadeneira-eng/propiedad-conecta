@@ -7,4 +7,5 @@ export const ADMIN_NAV_LINKS = [
   { href: "/admin/compras-creditos", label: "Compras de créditos" },
   { href: "/admin/pagos", label: "Pagos" },
   { href: "/admin/configuracion", label: "Configuración" },
+  { href: "/demo", label: "Modo Demo" },
 ];
