@@ -17,7 +17,11 @@ export function DashboardHeader({
     <header className="border-b border-border bg-background-alt">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center">
+          {/* El primer link de cada sección (Resumen/Marketplace/Mis
+              solicitudes) es su página principal — el logo lleva ahí en
+              vez de a la home pública, para no sacar a un usuario logueado
+              de su panel. */}
+          <Link href={links[0]?.href ?? "/"} className="flex items-center">
             <Image
               src="/logo.png"
               alt="Propiedad Conecta"
