@@ -215,3 +215,45 @@ test("los campos personales opcionales pueden quedar vacíos", () => {
   });
   assert.equal(parsed.success, true);
 });
+
+test("operationType ALQUILAR también es un valor válido del schema", () => {
+  const parsed = createRequestSchema.safeParse({
+    operationType: "ALQUILAR",
+    propertyType: "DEPARTAMENTO",
+    provincia: "Pichincha",
+    ciudad: "Quito",
+    priceMin: "100000",
+    priceMax: "150000",
+    contactName: "Prueba Alquiler",
+    contactPhone: "0991234567",
+    contactPreference: "WHATSAPP",
+    maxAgents: "3",
+  });
+  assert.equal(parsed.success, true);
+});
+
+// El form ya no preselecciona COMPRAR (RequestForm.tsx): esta es la
+// garantía real detrás de eso — si no llega operationType, el servidor
+// rechaza la solicitud en vez de asumir un valor por defecto.
+test("operationType sigue siendo obligatorio: sin él, el schema rechaza la solicitud", () => {
+  const parsed = createRequestSchema.safeParse({
+    propertyType: "DEPARTAMENTO",
+    provincia: "Pichincha",
+    ciudad: "Quito",
+    priceMin: "100000",
+    priceMax: "150000",
+    contactName: "Prueba Sin Operación",
+    contactPhone: "0991234567",
+    contactPreference: "WHATSAPP",
+    maxAgents: "3",
+    // operationType deliberadamente ausente
+  });
+  assert.equal(parsed.success, false);
+  if (!parsed.success) {
+    assert.ok(
+      parsed.error.issues.some(
+        (issue) => issue.path[0] === "operationType",
+      ),
+    );
+  }
+});

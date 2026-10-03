@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PROVINCIAS_ECUADOR } from "@/lib/ecuador";
 import {
-  OPERATION_TYPE_LABELS,
   PROPERTY_TYPE_LABELS,
   CONTACT_PREFERENCE_LABELS,
 } from "@/lib/enums";
@@ -39,14 +38,29 @@ export function RequestForm() {
       <Card className="space-y-5 p-6">
         <h2 className="font-semibold">¿Qué estás buscando?</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Tipo de operación" error={err.operationType}>
-            <select name="operationType" className={inputBase} defaultValue="COMPRAR">
-              {Object.entries(OPERATION_TYPE_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
+          <Field label="¿Qué deseas hacer?" error={err.operationType}>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="COMPRAR"
+                  required
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                Comprar una propiedad
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="ALQUILAR"
+                  required
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                Alquilar una propiedad
+              </label>
+            </div>
           </Field>
           <Field label="Tipo de propiedad" error={err.propertyType}>
             <select
