@@ -3,8 +3,10 @@
 /*
  * Identidad visual de Propiedad Conecta: minimalista, profesional, cercana.
  * Nada de estética de "inmobiliaria tradicional" (sin tonos tierra/dorado);
- * navy oscuro (color del logo) como acento primario + verde/teal (también
- * del logo) como acento secundario, sobre fondos blancos y gris muy claro.
+ * verde oscuro (color del logo) como acento primario + verde brillante
+ * (también del logo) como acento secundario, sobre fondos blancos y gris
+ * muy claro. Ambos tomados directo del logo actual (promedio de píxeles
+ * del lado oscuro / lado claro del ícono), no inventados.
  */
 :root {
   --background: #f7f8fb;
@@ -18,10 +20,10 @@
   --muted: #5b6079;
   --muted-2: #8b8fa3;
 
-  --accent: #143665;
-  --accent-hover: #0d2748;
+  --accent: #173125;
+  --accent-hover: #0f2018;
   --accent-foreground: #ffffff;
-  --accent-2: #3ea383;
+  --accent-2: #2f7d2a;
 
   --success: #16a34a;
   --success-bg: #e9f9ef;
