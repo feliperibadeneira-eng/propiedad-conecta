@@ -22,8 +22,8 @@ export async function PublicNav() {
           <Image
             src="/logo.png"
             alt="Propiedad Conecta"
-            width={1304}
-            height={367}
+            width={1079}
+            height={299}
             priority
             className="h-8 w-auto sm:h-10"
           />
