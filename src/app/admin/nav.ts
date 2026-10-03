@@ -1,5 +1,6 @@
 export const ADMIN_NAV_LINKS = [
   { href: "/admin", label: "Resumen" },
+  { href: "/admin/metricas", label: "Métricas" },
   { href: "/admin/usuarios", label: "Usuarios" },
   { href: "/admin/solicitudes", label: "Solicitudes" },
   { href: "/admin/leads", label: "Leads vendidos" },
