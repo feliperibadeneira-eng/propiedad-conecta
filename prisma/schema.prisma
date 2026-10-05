@@ -93,6 +93,15 @@ enum CreditPurchaseStatus {
   REJECTED
 }
 
+// Estado de una propiedad publicada por un agente (el gemelo de oferta de
+// RequestStatus). Deliberadamente no se bifurca CERRADA en VENDIDA/ALQUILADA:
+// igual que RequestStatus, no se condiciona el status a operationType.
+enum PropertyStatus {
+  DISPONIBLE
+  PAUSADA
+  CERRADA
+}
+
 // ---------- Auth ----------
 
 model User {
@@ -169,6 +178,7 @@ model AgentProfile {
   payments        Payment[]
   creditLedger    CreditLedgerEntry[]
   creditPurchases CreditPurchaseRequest[]
+  properties      Property[]
 }
 
 // ---------- Solicitudes (el "inventario" de demanda) ----------
@@ -240,6 +250,47 @@ model RequestFeature {
 
   @@unique([requestId, key])
   @@index([requestId])
+}
+
+// ---------- Propiedades (el "inventario" de oferta) ----------
+
+// Publicación de un agente. Primera versión: sin relación todavía hacia
+// PropertyRequest/LeadPurchase/ContactExchange — eso llega con matching y
+// desbloqueo bidireccional (Property -> Match -> LeadPurchase ->
+// Conversation -> ContactExchange), que son pasos futuros aditivos y no
+// requieren modificar nada de este modelo.
+model Property {
+  id            String        @id @default(uuid())
+  agentId       String
+  operationType OperationType
+  propertyType  PropertyType
+
+  title       String
+  description String?
+
+  price Decimal @db.Decimal(12, 2)
+
+  provincia String
+  ciudad    String
+  sector    String?
+
+  squareMeters Int
+  bedrooms     Int?
+  bathrooms    Int?
+
+  status PropertyStatus @default(DISPONIBLE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent AgentProfile @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([status])
+  @@index([propertyType])
+  @@index([provincia, ciudad, sector])
+  @@index([price])
+  @@index([createdAt])
 }
 
 // ---------- Compra de leads ----------
