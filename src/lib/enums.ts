@@ -6,6 +6,7 @@ import type {
   LeadPurchaseStatus,
   PaymentStatus,
   CreditPurchaseStatus,
+  PropertyStatus,
 } from "@/generated/prisma/enums";
 
 export const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
@@ -32,6 +33,12 @@ export const CONTACT_PREFERENCE_LABELS: Record<ContactPreference, string> = {
 export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   BUSCANDO: "Buscando",
   EN_PROCESO: "En proceso",
+  PAUSADA: "Pausada",
+  CERRADA: "Cerrada",
+};
+
+export const PROPERTY_STATUS_LABELS: Record<PropertyStatus, string> = {
+  DISPONIBLE: "Disponible",
   PAUSADA: "Pausada",
   CERRADA: "Cerrada",
 };
