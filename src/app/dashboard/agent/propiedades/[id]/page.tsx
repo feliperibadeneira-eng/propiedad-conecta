@@ -128,6 +128,9 @@ export default async function AgentPropertyDetailPage({
             <Link href={`/dashboard/agent/propiedades/${property.id}/editar`} className={buttonClasses("secondary", "sm")}>
               Editar
             </Link>
+            <Link href={`/dashboard/agent/propiedades/${property.id}/solicitudes`} className={buttonClasses("accent2", "sm")}>
+              Ver solicitudes compatibles
+            </Link>
             {property.status !== "DISPONIBLE" && (
               <form action={activatePropertyAction.bind(null, property.id)}>
                 <Button size="sm" variant="secondary">Marcar disponible</Button>
