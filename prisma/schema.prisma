@@ -286,6 +286,7 @@ model Property {
   agent         AgentProfile    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   images        PropertyImage[]
   leadPurchases LeadPurchase[]
+  shares        PropertyShare[]
 
   @@index([agentId])
   @@index([status])
@@ -345,13 +346,14 @@ model LeadPurchase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  request       PropertyRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  agent         AgentProfile        @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  payment       Payment             @relation(fields: [paymentId], references: [id])
-  property      Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  exchange      ContactExchange?
-  statusHistory LeadStatusHistory[]
-  ledgerEntries CreditLedgerEntry[]
+  request        PropertyRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  agent          AgentProfile        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  payment        Payment             @relation(fields: [paymentId], references: [id])
+  property       Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  exchange       ContactExchange?
+  statusHistory  LeadStatusHistory[]
+  ledgerEntries  CreditLedgerEntry[]
+  propertyShares PropertyShare[]
 
   // Un agente no puede comprar el mismo lead dos veces (regla 4), incluso
   // si el lead se reactiva más adelante para otros agentes.
@@ -359,6 +361,43 @@ model LeadPurchase {
   @@index([requestId])
   @@index([agentId])
   @@index([status])
+  @@index([propertyId])
+}
+
+// Registra que el agente compartió/ofreció una Property concreta con el
+// comprador de un LeadPurchase ya desbloqueado (PR #15). Semántica exacta:
+// "el agente la compartió" — NO implica que el comprador la haya visto,
+// abierto o mostrado interés; eso queda deliberadamente fuera de alcance
+// (no hay estado de interés/reacciones todavía).
+//
+// Distinto de LeadPurchase.propertyId (PR #14, atribución histórica del
+// origen del unlock, admite PAUSADA/CERRADA): esto es una acción activa
+// hacia adelante, por eso el servicio solo permite compartir propiedades
+// DISPONIBLE.
+//
+// propertyId es nullable (a diferencia de requerido) para que, si una
+// Property llegara a borrarse físicamente alguna vez (hoy no existe
+// ningún flujo de la app que lo haga), el historial comercial de que se
+// compartió algo en esa fecha no desaparezca junto con la fila entera —
+// solo se desvincula (onDelete: SetNull), igual que LeadPurchase.propertyId.
+// leadPurchaseId sí usa Cascade: sin su LeadPurchase, la fila no tiene
+// ninguna identidad (ni agente ni comprador) y no queda nada útil que
+// preservar — mismo criterio que ya usa ContactExchange.leadPurchaseId.
+model PropertyShare {
+  id             String   @id @default(uuid())
+  leadPurchaseId String
+  propertyId     String?
+  sentAt         DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  leadPurchase LeadPurchase @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
+  property     Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  // Compartir la misma propiedad otra vez con el mismo lead no crea una
+  // fila nueva (sección 5 del informe) — es un hecho binario, no un log de
+  // cada reenvío.
+  @@unique([leadPurchaseId, propertyId])
+  @@index([leadPurchaseId])
   @@index([propertyId])
 }
 

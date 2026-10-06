@@ -3,6 +3,8 @@ import { ShieldCheck } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
 import { getPurchasedLeadDetail } from "@/lib/services/leads";
 import { getCreditsBalance } from "@/lib/services/agentProfile";
+import { listAgentProperties } from "@/lib/services/properties";
+import { listSharedPropertiesForAgent } from "@/lib/services/propertyShares";
 import { getRefundEligibleHours } from "@/lib/settings";
 import { isEligibleForRefundRequest } from "@/lib/services/purchase";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -10,12 +12,12 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatUSD } from "@/lib/format";
 import { PROPERTY_TYPE_LABELS, LEAD_PURCHASE_STATUS_LABELS } from "@/lib/enums";
 import { agentToBuyerMessage } from "@/lib/whatsapp";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
 import { AGENT_NAV_LINKS } from "../../../nav";
-import { markContactedAction, markAppointmentAction } from "../actions";
+import { markContactedAction, markAppointmentAction, sharePropertyAction } from "../actions";
 import { ReleaseLeadDialog } from "../ReleaseLeadDialog";
 import { RequestRefundDialog } from "../RequestRefundDialog";
 
@@ -34,6 +36,13 @@ export default async function PurchasedLeadDetailPage({
     getRefundEligibleHours(),
   ]);
   if (!purchase) notFound();
+
+  const [myProperties, sharedProperties] = await Promise.all([
+    listAgentProperties(user.agentProfileId!),
+    listSharedPropertiesForAgent(user.agentProfileId!, purchase.id),
+  ]);
+  const availableProperties = myProperties.filter((p) => p.status === "DISPONIBLE");
+  const sharedPropertyIds = new Set(sharedProperties.map((s) => s.propertyId));
 
   const active = OCCUPYING_STATUSES.includes(purchase.status);
   const canRequestRefund = isEligibleForRefundRequest(purchase, refundEligibleHours);
@@ -122,6 +131,45 @@ export default async function PurchasedLeadDetailPage({
           )}
           {active && <ReleaseLeadDialog leadPurchaseId={purchase.id} />}
         </div>
+
+        <Card className="mt-6 p-6">
+          <h2 className="font-semibold">Tus propiedades</h2>
+          <p className="mt-1 text-sm text-muted">
+            Comparte una propiedad disponible con este comprador. Solo tú la ves hasta que la
+            envías.
+          </p>
+          {availableProperties.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-2">
+              No tienes propiedades disponibles para compartir ahora mismo.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {availableProperties.map((p) => {
+                const alreadyShared = sharedPropertyIds.has(p.id);
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{p.title}</p>
+                      <p className="text-xs text-muted-2">{formatUSD(p.price)}</p>
+                    </div>
+                    {alreadyShared ? (
+                      <Badge tone="success">Compartida</Badge>
+                    ) : (
+                      <form action={sharePropertyAction.bind(null, purchase.id, p.id)}>
+                        <button type="submit" className={buttonClasses("secondary", "sm")}>
+                          Enviar
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
 
         <Card className="mt-6 p-6">
           <div className="flex items-center gap-2">

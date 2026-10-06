@@ -238,6 +238,8 @@ export async function getMarketplaceMetrics() {
     totalRequests,
     totalLeadPurchases,
     leadPurchasesWithPropertyOrigin,
+    totalPropertyShares,
+    leadPurchasesWithShare,
     agentsWithUnlockGroups,
     totalAgents,
     approvedCreditAgg,
@@ -261,6 +263,8 @@ export async function getMarketplaceMetrics() {
     prisma.propertyRequest.count(),
     prisma.leadPurchase.count(),
     prisma.leadPurchase.count({ where: { propertyId: { not: null } } }),
+    prisma.propertyShare.count(),
+    prisma.leadPurchase.count({ where: { propertyShares: { some: {} } } }),
     prisma.leadPurchase.groupBy({ by: ["agentId"] }),
     prisma.agentProfile.count(),
     prisma.creditPurchaseRequest.aggregate({
@@ -309,6 +313,12 @@ export async function getMarketplaceMetrics() {
   const avgLeadsPerActiveAgent =
     agentsWithUnlock > 0 ? totalLeadPurchases / agentsWithUnlock : null;
 
+  // "Tasa unlock -> share" (PR #15): de los leads ya desbloqueados, qué
+  // fracción recibió al menos una propiedad compartida. Se calcula en JS a
+  // partir de los dos counts de arriba, sin una query adicional.
+  const unlockToShareRate =
+    totalLeadPurchases > 0 ? leadPurchasesWithShare / totalLeadPurchases : null;
+
   const creditsSold = approvedCreditAgg._sum.credits ?? 0;
   const revenue = approvedCreditAgg._sum.amount ?? 0;
   const approvedCreditPurchases = approvedCreditAgg._count;
@@ -330,6 +340,11 @@ export async function getMarketplaceMetrics() {
       // todo desbloqueo pasa por el matching de una propiedad, así que
       // este número siempre es <= unlocked.
       unlockedFromProperty: leadPurchasesWithPropertyOrigin,
+      // Propiedades compartidas con compradores (PR #15) y cuántos de los
+      // leads ya desbloqueados recibieron al menos una.
+      propertiesShared: totalPropertyShares,
+      leadsWithShare: leadPurchasesWithShare,
+      unlockToShareRate,
       agentsWithUnlock,
       avgLeadsPerActiveAgent,
     },

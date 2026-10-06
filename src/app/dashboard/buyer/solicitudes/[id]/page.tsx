@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { ImageOff } from "lucide-react";
 import { requireBuyer } from "@/lib/auth";
 import { getBuyerRequestDetail } from "@/lib/services/requests";
 import { BRAND_NAME } from "@/lib/brand";
@@ -7,11 +8,13 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { formatUSD, formatDate } from "@/lib/format";
+import { propertyPhotoUrl } from "@/lib/propertyPhotos";
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
   REQUEST_STATUS_LABELS,
   LEAD_PURCHASE_STATUS_LABELS,
+  PROPERTY_STATUS_LABELS,
   BUYER_OUTCOME_OPTIONS,
 } from "@/lib/enums";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
@@ -156,6 +159,60 @@ export default async function BuyerRequestDetailPage({
                     </a>
                   )}
                 </div>
+                {p.propertyShares.length > 0 && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <p className="text-sm font-medium">Propiedades que te compartió</p>
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      {p.propertyShares.map((share) => (
+                        <div
+                          key={share.id}
+                          className="flex gap-3 rounded-xl border border-border p-3"
+                        >
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
+                            {share.property?.images[0] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={propertyPhotoUrl(share.property.images[0].id)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <ImageOff className="text-muted-2" size={18} />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            {share.property ? (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm font-medium">
+                                    {share.property.title}
+                                  </p>
+                                  {share.property.status !== "DISPONIBLE" && (
+                                    <Badge tone="neutral">
+                                      {PROPERTY_STATUS_LABELS[share.property.status]}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted">
+                                  {formatUSD(share.property.price)}
+                                </p>
+                                <p className="truncate text-xs text-muted-2">
+                                  {[share.property.provincia, share.property.ciudad, share.property.sector]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-sm text-muted-2">
+                                Esta propiedad ya no está disponible.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {OCCUPYING_STATUSES.includes(p.status) && (
                   <form
                     action={markOutcomeAction.bind(null, request.id)}

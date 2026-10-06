@@ -9,6 +9,7 @@ import {
   requestRefund,
   PurchaseError,
 } from "@/lib/services/purchase";
+import { shareProperty } from "@/lib/services/propertyShares";
 
 export async function markContactedAction(leadPurchaseId: string) {
   const user = await requireAgent();
@@ -26,6 +27,12 @@ export async function releaseLeadAction(leadPurchaseId: string, formData: FormDa
   const user = await requireAgent();
   const reason = String(formData.get("reason") || "Otro");
   await releaseLead(user.agentProfileId!, leadPurchaseId, reason);
+  revalidatePath("/dashboard/agent/leads/purchased");
+}
+
+export async function sharePropertyAction(leadPurchaseId: string, propertyId: string) {
+  const user = await requireAgent();
+  await shareProperty(user.agentProfileId!, leadPurchaseId, propertyId);
   revalidatePath("/dashboard/agent/leads/purchased");
 }
 
