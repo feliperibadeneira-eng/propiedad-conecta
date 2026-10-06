@@ -8,16 +8,18 @@ const initialState: UnlockState = {};
 
 export function UnlockDialog({
   requestId,
+  propertyId,
   creditsBalance,
   unlockCost,
 }: {
   requestId: string;
+  propertyId?: string;
   creditsBalance: number;
   unlockCost: number;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, formAction, pending] = useActionState(
-    unlockLeadAction.bind(null, requestId),
+    unlockLeadAction.bind(null, requestId, propertyId),
     initialState,
   );
   const plural = unlockCost !== 1 ? "s" : "";

@@ -10,10 +10,12 @@ import { hashPassword } from "../password";
 import { purchaseWithCredits, PurchaseError } from "./purchase";
 import { getPurchasedLeadDetail } from "./leads";
 import { getUnlockCost } from "./credits";
+import { createProperty } from "./properties";
 import { createRequestSchema } from "../validators/request";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
+const createdRequestIds: string[] = [];
 
 async function makeAgent(credits: number) {
   const user = await prisma.user.create({
@@ -77,23 +79,56 @@ async function makeBuyerRequest(operationType: "COMPRAR" | "ALQUILAR") {
   return { user, buyerProfile, request };
 }
 
+async function makeProperty(
+  agentProfileId: string,
+  overrides: Partial<Parameters<typeof createProperty>[1]> = {},
+) {
+  return createProperty(agentProfileId, {
+    operationType: "COMPRAR",
+    propertyType: "DEPARTAMENTO",
+    title: "Propiedad de prueba (origen de unlock)",
+    price: 120000,
+    provincia: "Pichincha",
+    ciudad: "Quito",
+    squareMeters: 90,
+    ...overrides,
+  });
+}
+
 let richAgent: Awaited<ReturnType<typeof makeAgent>>;
 let poorAgent: Awaited<ReturnType<typeof makeAgent>>;
+let secondAgent: Awaited<ReturnType<typeof makeAgent>>;
 let compraRequest: Awaited<ReturnType<typeof makeBuyerRequest>>;
 let alquilerRequest: Awaited<ReturnType<typeof makeBuyerRequest>>;
+let ownProperty: Awaited<ReturnType<typeof makeProperty>>;
+let pausedProperty: Awaited<ReturnType<typeof makeProperty>>;
+let closedProperty: Awaited<ReturnType<typeof makeProperty>>;
+let foreignProperty: Awaited<ReturnType<typeof makeProperty>>;
 
 before(async () => {
   richAgent = await makeAgent(100);
   poorAgent = await makeAgent(0);
+  secondAgent = await makeAgent(50);
   compraRequest = await makeBuyerRequest("COMPRAR");
   alquilerRequest = await makeBuyerRequest("ALQUILAR");
+
+  ownProperty = await makeProperty(richAgent.profile.id, { title: "Propia disponible" });
+  pausedProperty = await makeProperty(richAgent.profile.id, { title: "Propia pausada" });
+  await prisma.property.update({ where: { id: pausedProperty.id }, data: { status: "PAUSADA" } });
+  closedProperty = await makeProperty(richAgent.profile.id, { title: "Propia cerrada" });
+  await prisma.property.update({ where: { id: closedProperty.id }, data: { status: "CERRADA" } });
+  foreignProperty = await makeProperty(secondAgent.profile.id, { title: "Ajena" });
 });
 
 after(async () => {
-  // Cascada: borrar los Users borra Profiles/Sessions/etc; borrar las
-  // PropertyRequest borra features/purchases/payments/exchanges/historial.
+  // Cascada: borrar los Users borra Profiles/Sessions/Property/etc; borrar
+  // las PropertyRequest borra features/purchases/payments/exchanges/historial.
   await prisma.propertyRequest.deleteMany({
-    where: { id: { in: [compraRequest.request.id, alquilerRequest.request.id] } },
+    where: {
+      id: {
+        in: [compraRequest.request.id, alquilerRequest.request.id, ...createdRequestIds],
+      },
+    },
   });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
   await prisma.$disconnect();
@@ -197,6 +232,173 @@ test("el saldo del agente siempre coincide con la suma de su ledger", async () =
     running += e.amount;
     assert.equal(e.balanceAfter, running);
   }
+});
+
+// ---------- propertyId: propiedad de origen del desbloqueo (PR #14) ----------
+//
+// Regla: propertyId ausente -> unlock normal, null. propertyId válido y
+// propio -> se guarda (incluso si la propiedad está PAUSADA/CERRADA, ya
+// que es atribución histórica, no disponibilidad actual). propertyId
+// inexistente o de otro agente -> rechaza TODO el unlock, sin cobrar
+// créditos ni crear nada — nunca se degrada en silencio a null.
+
+test("unlock sin propertyId: funciona y guarda propertyId null (compatibilidad)", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const purchase = await purchaseWithCredits({
+    agentUserId: richAgent.user.id,
+    agentProfileId: richAgent.profile.id,
+    requestId: request.id,
+  });
+
+  assert.equal(purchase.propertyId, null);
+});
+
+test("propertyId de una propiedad propia DISPONIBLE: funciona y lo guarda", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const purchase = await purchaseWithCredits({
+    agentUserId: richAgent.user.id,
+    agentProfileId: richAgent.profile.id,
+    requestId: request.id,
+    propertyId: ownProperty.id,
+  });
+
+  assert.equal(purchase.propertyId, ownProperty.id);
+});
+
+test("propertyId de otro agente: rechaza el unlock completo, sin cobrar ni crear nada", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const balanceBefore = await prisma.agentProfile.findUniqueOrThrow({
+    where: { id: richAgent.profile.id },
+  });
+  const ledgerCountBefore = await prisma.creditLedgerEntry.count({
+    where: { agentId: richAgent.profile.id },
+  });
+
+  await assert.rejects(
+    () =>
+      purchaseWithCredits({
+        agentUserId: richAgent.user.id,
+        agentProfileId: richAgent.profile.id,
+        requestId: request.id,
+        propertyId: foreignProperty.id,
+      }),
+    PurchaseError,
+  );
+
+  const balanceAfter = await prisma.agentProfile.findUniqueOrThrow({
+    where: { id: richAgent.profile.id },
+  });
+  assert.equal(balanceAfter.creditsBalance, balanceBefore.creditsBalance, "no debe descontarse balance");
+
+  const ledgerCountAfter = await prisma.creditLedgerEntry.count({
+    where: { agentId: richAgent.profile.id },
+  });
+  assert.equal(ledgerCountAfter, ledgerCountBefore, "no debe crearse movimiento de créditos");
+
+  const leadPurchase = await prisma.leadPurchase.findUnique({
+    where: { requestId_agentId: { requestId: request.id, agentId: richAgent.profile.id } },
+  });
+  assert.equal(leadPurchase, null, "no debe crearse LeadPurchase");
+
+  const exchange = await prisma.contactExchange.findFirst({ where: { requestId: request.id } });
+  assert.equal(exchange, null, "no debe crearse ContactExchange");
+});
+
+test("propertyId inexistente: rechaza el unlock completo, sin cobrar ni crear nada", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const balanceBefore = await prisma.agentProfile.findUniqueOrThrow({
+    where: { id: richAgent.profile.id },
+  });
+  const ledgerCountBefore = await prisma.creditLedgerEntry.count({
+    where: { agentId: richAgent.profile.id },
+  });
+
+  await assert.rejects(
+    () =>
+      purchaseWithCredits({
+        agentUserId: richAgent.user.id,
+        agentProfileId: richAgent.profile.id,
+        requestId: request.id,
+        propertyId: "00000000-0000-0000-0000-000000000000",
+      }),
+    PurchaseError,
+  );
+
+  const balanceAfter = await prisma.agentProfile.findUniqueOrThrow({
+    where: { id: richAgent.profile.id },
+  });
+  assert.equal(balanceAfter.creditsBalance, balanceBefore.creditsBalance, "no debe descontarse balance");
+
+  const ledgerCountAfter = await prisma.creditLedgerEntry.count({
+    where: { agentId: richAgent.profile.id },
+  });
+  assert.equal(ledgerCountAfter, ledgerCountBefore, "no debe crearse movimiento de créditos");
+
+  const leadPurchase = await prisma.leadPurchase.findUnique({
+    where: { requestId_agentId: { requestId: request.id, agentId: richAgent.profile.id } },
+  });
+  assert.equal(leadPurchase, null, "no debe crearse LeadPurchase");
+
+  const exchange = await prisma.contactExchange.findFirst({ where: { requestId: request.id } });
+  assert.equal(exchange, null, "no debe crearse ContactExchange");
+});
+
+test("duplicado: misma solicitud y mismo agente sigue rechazado, con o sin propertyId", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  await purchaseWithCredits({
+    agentUserId: richAgent.user.id,
+    agentProfileId: richAgent.profile.id,
+    requestId: request.id,
+  });
+
+  await assert.rejects(
+    () =>
+      purchaseWithCredits({
+        agentUserId: richAgent.user.id,
+        agentProfileId: richAgent.profile.id,
+        requestId: request.id,
+        propertyId: ownProperty.id,
+      }),
+    PurchaseError,
+  );
+});
+
+test("propertyId de una propiedad propia PAUSADA: funciona y la guarda (atribución histórica)", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const purchase = await purchaseWithCredits({
+    agentUserId: richAgent.user.id,
+    agentProfileId: richAgent.profile.id,
+    requestId: request.id,
+    propertyId: pausedProperty.id,
+  });
+
+  assert.equal(purchase.propertyId, pausedProperty.id);
+});
+
+test("propertyId de una propiedad propia CERRADA: funciona y la guarda (atribución histórica)", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+
+  const purchase = await purchaseWithCredits({
+    agentUserId: richAgent.user.id,
+    agentProfileId: richAgent.profile.id,
+    requestId: request.id,
+    propertyId: closedProperty.id,
+  });
+
+  assert.equal(purchase.propertyId, closedProperty.id);
 });
 
 test("los campos personales opcionales pueden quedar vacíos", () => {

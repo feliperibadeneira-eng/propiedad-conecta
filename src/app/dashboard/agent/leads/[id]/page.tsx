@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
 import { getRequestForAgentDetail } from "@/lib/services/leads";
+import { getAgentPropertyDetail } from "@/lib/services/properties";
 import { logEvent } from "@/lib/services/analytics";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
@@ -22,13 +23,27 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentLeadDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ propertyId?: string }>;
 }) {
   const { id } = await params;
+  const { propertyId } = await searchParams;
   const user = await requireAgent();
   const request = await getRequestForAgentDetail(user.agentProfileId!, id);
   if (!request) notFound();
+
+  // Solo para mostrar el nombre de la propiedad en pantalla — NO es la
+  // validación real (esa ocurre dentro de purchaseWithCredits, dentro de
+  // la misma transacción del cobro). Si propertyId viene inválido/ajeno,
+  // esta búsqueda simplemente no encuentra nada y no se muestra la tarjeta
+  // contextual, pero el valor original igual se propaga a UnlockDialog sin
+  // modificarlo: un propertyId inválido debe rechazar el desbloqueo, nunca
+  // degradarse en silencio a "sin propiedad".
+  const originProperty = propertyId
+    ? await getAgentPropertyDetail(user.agentProfileId!, propertyId)
+    : null;
 
   await logEvent("lead_viewed", {
     userId: user.id,
@@ -55,6 +70,12 @@ export default async function AgentLeadDetailPage({
         <p className="mt-1 text-sm text-muted-2">
           Publicado {formatRelativeTime(request.createdAt)}
         </p>
+
+        {originProperty && (
+          <Card className="mt-5 border-accent/30 bg-accent/5 p-4 text-sm">
+            Vas a contactar por tu propiedad: <strong>{originProperty.title}</strong>
+          </Card>
+        )}
 
         <Card className="mt-5 grid gap-4 p-6 sm:grid-cols-2">
           <Info label="Operación" value={OPERATION_TYPE_LABELS[request.operationType]} />
@@ -150,6 +171,7 @@ export default async function AgentLeadDetailPage({
           ) : (
             <UnlockDialog
               requestId={request.id}
+              propertyId={propertyId}
               creditsBalance={request.agentCreditsBalance}
               unlockCost={request.unlockCost}
             />

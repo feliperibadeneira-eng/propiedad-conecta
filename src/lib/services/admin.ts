@@ -237,6 +237,7 @@ export async function getMarketplaceMetrics() {
     requestsByStatusRaw,
     totalRequests,
     totalLeadPurchases,
+    leadPurchasesWithPropertyOrigin,
     agentsWithUnlockGroups,
     totalAgents,
     approvedCreditAgg,
@@ -259,6 +260,7 @@ export async function getMarketplaceMetrics() {
     prisma.propertyRequest.groupBy({ by: ["status"], _count: true }),
     prisma.propertyRequest.count(),
     prisma.leadPurchase.count(),
+    prisma.leadPurchase.count({ where: { propertyId: { not: null } } }),
     prisma.leadPurchase.groupBy({ by: ["agentId"] }),
     prisma.agentProfile.count(),
     prisma.creditPurchaseRequest.aggregate({
@@ -324,6 +326,10 @@ export async function getMarketplaceMetrics() {
     },
     leads: {
       unlocked: totalLeadPurchases,
+      // Desbloqueos con una Property de origen registrada (PR #14) — no
+      // todo desbloqueo pasa por el matching de una propiedad, así que
+      // este número siempre es <= unlocked.
+      unlockedFromProperty: leadPurchasesWithPropertyOrigin,
       agentsWithUnlock,
       avgLeadsPerActiveAgent,
     },
