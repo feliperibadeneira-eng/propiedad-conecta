@@ -283,7 +283,8 @@ model Property {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  agent AgentProfile @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent  AgentProfile    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  images PropertyImage[]
 
   @@index([agentId])
   @@index([status])
@@ -291,6 +292,28 @@ model Property {
   @@index([provincia, ciudad, sector])
   @@index([price])
   @@index([createdAt])
+}
+
+// Fotos de una propiedad. El binario vive en Postgres (igual que
+// CreditPurchaseRequest.receiptImageData) — no hay proveedor de storage
+// externo en el proyecto, así que se reutiliza el mismo patrón en vez de
+// introducir infraestructura nueva. isPrimary no tiene un constraint de
+// unicidad a nivel de DB (Prisma no soporta índices únicos parciales en su
+// DSL) — la exclusividad de "una sola portada por propiedad" se garantiza
+// en la capa de servicio (propertyImages.ts), igual que el resto de
+// estados mutuamente excluyentes de este proyecto (ver recomputeRequestStatus).
+model PropertyImage {
+  id         String   @id @default(uuid())
+  propertyId String
+  data       Bytes
+  mimeType   String
+  isPrimary  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
 }
 
 // ---------- Compra de leads ----------

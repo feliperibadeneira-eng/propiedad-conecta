@@ -11,6 +11,8 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PROVINCIAS_ECUADOR } from "@/lib/ecuador";
 import { PROPERTY_TYPE_LABELS } from "@/lib/enums";
+import { MAX_IMAGES_PER_PROPERTY } from "@/lib/propertyPhotoRules";
+import { PhotoPicker } from "./PhotoPicker";
 import type { OperationType, PropertyType } from "@/generated/prisma/enums";
 
 const initialState: PropertyFormState = {};
@@ -194,6 +196,13 @@ export function PropertyForm({
           </Field>
         </div>
       </Card>
+
+      {mode === "create" && (
+        <Card className="space-y-3 p-6">
+          <h2 className="font-semibold">Fotos</h2>
+          <PhotoPicker name="photos" maxFiles={MAX_IMAGES_PER_PROPERTY} />
+        </Card>
+      )}
 
       {state.error && (
         <p className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger">{state.error}</p>

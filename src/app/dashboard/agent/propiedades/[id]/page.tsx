@@ -13,6 +13,7 @@ import {
   PROPERTY_TYPE_LABELS,
   PROPERTY_STATUS_LABELS,
 } from "@/lib/enums";
+import { propertyPhotoUrl } from "@/lib/propertyPhotos";
 import { AGENT_NAV_LINKS } from "../../nav";
 import { activatePropertyAction, pausePropertyAction, closePropertyAction } from "./actions";
 import type { PropertyStatus } from "@/generated/prisma/enums";
@@ -30,16 +31,19 @@ export default async function AgentPropertyDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; updated?: string }>;
+  searchParams: Promise<{ created?: string; updated?: string; photoError?: string }>;
 }) {
   const { id } = await params;
-  const { created, updated } = await searchParams;
+  const { created, updated, photoError } = await searchParams;
   const user = await requireAgent();
   const [property, creditsBalance] = await Promise.all([
     getAgentPropertyDetail(user.agentProfileId!, id),
     getCreditsBalance(user.agentProfileId!),
   ]);
   if (!property) notFound();
+
+  const primaryPhoto = property.images.find((img) => img.isPrimary) ?? property.images[0];
+  const otherPhotos = property.images.filter((img) => img.id !== primaryPhoto?.id);
 
   return (
     <>
@@ -55,11 +59,47 @@ export default async function AgentPropertyDetailPage({
             Cambios guardados.
           </Card>
         )}
+        {photoError === "1" && (
+          <Card className="mb-6 border-warning/30 bg-warning-bg p-4 text-sm text-warning">
+            La propiedad se publicó, pero hubo un problema guardando las fotos. Intenta de nuevo
+            desde &quot;Editar&quot;.
+          </Card>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight">{property.title}</h1>
           <Badge tone={STATUS_TONE[property.status]}>{PROPERTY_STATUS_LABELS[property.status]}</Badge>
         </div>
+
+        {primaryPhoto ? (
+          <div className="mt-5">
+            <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl border border-border bg-surface-hover">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={propertyPhotoUrl(primaryPhoto.id)}
+                alt={property.title}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            {otherPhotos.length > 0 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto">
+                {otherPhotos.map((img) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={img.id}
+                    src={propertyPhotoUrl(img.id)}
+                    alt=""
+                    className="h-20 w-20 shrink-0 rounded-lg border border-border object-cover"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <Card className="mt-5 flex h-40 items-center justify-center p-6 text-sm text-muted">
+            Esta propiedad todavía no tiene fotos.
+          </Card>
+        )}
 
         <Card className="mt-5 grid gap-4 p-6 sm:grid-cols-2">
           <Info label="Operación" value={OPERATION_TYPE_LABELS[property.operationType]} />
