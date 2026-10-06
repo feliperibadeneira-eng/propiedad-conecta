@@ -102,6 +102,15 @@ enum PropertyStatus {
   CERRADA
 }
 
+// Tipo de mensaje dentro de una Conversation (PR #16). Deliberadamente
+// sin SYSTEM todavía: los eventos de ciclo de vida siguen viviendo solo
+// en LeadStatusHistory — SYSTEM se agregaría de forma aditiva en un PR
+// futuro si se aprueba, nunca reemplazando esa fuente de verdad.
+enum ConversationMessageType {
+  TEXT
+  PROPERTY_SHARE
+}
+
 // ---------- Auth ----------
 
 model User {
@@ -121,6 +130,7 @@ model User {
   notifications           Notification[]
   auditLogs               AuditLog[]
   reviewedCreditPurchases CreditPurchaseRequest[]
+  conversationMessages    ConversationMessage[]
 
   @@index([role])
 }
@@ -351,6 +361,7 @@ model LeadPurchase {
   payment        Payment             @relation(fields: [paymentId], references: [id])
   property       Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   exchange       ContactExchange?
+  conversation   Conversation?
   statusHistory  LeadStatusHistory[]
   ledgerEntries  CreditLedgerEntry[]
   propertyShares PropertyShare[]
@@ -390,8 +401,9 @@ model PropertyShare {
   sentAt         DateTime @default(now())
   createdAt      DateTime @default(now())
 
-  leadPurchase LeadPurchase @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
-  property     Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  leadPurchase LeadPurchase          @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
+  property     Property?             @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  messages     ConversationMessage[]
 
   // Compartir la misma propiedad otra vez con el mismo lead no crea una
   // fila nueva (sección 5 del informe) — es un hecho binario, no un log de
@@ -502,6 +514,75 @@ model ContactExchange {
   @@index([requestId])
   @@index([buyerId])
   @@index([agentId])
+}
+
+// ---------- Conversación ----------
+
+// Hilo de mensajes de una oportunidad comercial concreta (PR #16). Ancla
+// 1:1 a LeadPurchase — mismo patrón que ContactExchange.leadPurchaseId —
+// porque LeadPurchase ya es la identidad única de "este agente con esta
+// solicitud" (@@unique([requestId, agentId]) en LeadPurchase): dos
+// solicitudes del mismo comprador con el mismo agente generan dos
+// LeadPurchase y, por lo tanto, dos Conversation distintas — nunca se
+// mezclan oportunidades comerciales distintas.
+//
+// Se crea automáticamente dentro de la misma transacción que crea el
+// LeadPurchase (ver purchaseWithCredits en purchase.ts) — nunca de forma
+// perezosa en el primer mensaje. Sin backfill: los LeadPurchase previos a
+// este PR quedan sin Conversation.
+//
+// Deliberadamente sin un campo de estado propio (ConversationStatus): la
+// posibilidad de escribir se determinará en un PR posterior a partir de
+// LeadPurchase.status / PropertyRequest.status — la conversación no debe
+// convertirse en una segunda fuente de verdad del lifecycle.
+model Conversation {
+  id             String   @id @default(uuid())
+  leadPurchaseId String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  leadPurchase LeadPurchase          @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
+  messages     ConversationMessage[]
+}
+
+// Mensaje individual dentro de una Conversation (PR #16). Solo esquema:
+// las reglas de quién puede enviar, longitud máxima y frecuencia se
+// implementan en el servicio de PR #17 — Prisma no puede expresarlas como
+// CHECK constraints. Reglas de negocio que el servicio deberá aplicar:
+//   - type TEXT           → body obligatorio (no vacío).
+//   - type PROPERTY_SHARE → propertyShareId obligatorio, y debe apuntar a
+//     un PropertyShare ya existente (creado por shareProperty()) — este
+//     modelo nunca duplica propertyId/title/price/foto, solo referencia la
+//     fila que ya es la única fuente de verdad (ver PropertyShare arriba).
+//   - senderUserId siempre debe ser un participante autorizado de la
+//     Conversation (el agente o el comprador del LeadPurchase ancla) —
+//     se valida en el servicio, nunca a nivel de esquema.
+//
+// senderUserId es obligatorio: todo mensaje real tiene un remitente — no
+// hay mensajes de sistema todavía (eso es ConversationMessageType.SYSTEM,
+// explícitamente diferido a un PR futuro). Por ser obligatorio, la
+// relación hacia User NO puede usar onDelete: SetNull (Postgres fallaría
+// en tiempo de ejecución al intentar dejar NULL una columna NOT NULL, ver
+// el informe de PR #16); se omite onDelete y se usa el default de Prisma
+// para relaciones obligatorias (RESTRICT) — hoy no existe ningún flujo que
+// borre un User, así que esto no cambia ningún comportamiento actual, solo
+// evita que un borrado futuro corrompa en silencio el historial de
+// mensajes.
+model ConversationMessage {
+  id              String                  @id @default(uuid())
+  conversationId  String
+  senderUserId    String
+  type            ConversationMessageType @default(TEXT)
+  body            String?
+  propertyShareId String?
+  createdAt       DateTime                @default(now())
+
+  conversation  Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender        User           @relation(fields: [senderUserId], references: [id])
+  propertyShare PropertyShare? @relation(fields: [propertyShareId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([propertyShareId])
 }
 
 // Historial de cambios de estado, tanto de la solicitud como de una compra

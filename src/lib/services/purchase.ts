@@ -295,6 +295,14 @@ export async function purchaseWithCredits(params: {
       },
     });
 
+    // PR #16: el hilo de conversación nace junto con el LeadPurchase y el
+    // ContactExchange, en la misma transacción — nunca de forma perezosa
+    // en el primer mensaje. Sin backfill: los LeadPurchase anteriores a
+    // este cambio quedan sin Conversation.
+    await tx.conversation.create({
+      data: { leadPurchaseId: created.id },
+    });
+
     // 5: registrar la transacción negativa en el ledger de créditos.
     await tx.creditLedgerEntry.create({
       data: {
