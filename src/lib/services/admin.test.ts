@@ -10,6 +10,7 @@ import { prisma } from "../db";
 import { hashPassword } from "../password";
 import { getMarketplaceMetrics, ecuadorTodayStart } from "./admin";
 import { purchaseWithCredits } from "./purchase";
+import { createProperty } from "./properties";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
@@ -129,6 +130,39 @@ test("cuenta un lead desbloqueado real (vía purchaseWithCredits, no un insert d
   const after = await getMarketplaceMetrics();
   assert.equal(after.leads.unlocked, before.leads.unlocked + 1);
   assert.equal(after.agentsActivity.withUnlock, before.agentsActivity.withUnlock + 1);
+});
+
+test("leads.unlockedFromProperty solo cuenta desbloqueos con una Property de origen (PR #14)", async () => {
+  const before = await getMarketplaceMetrics();
+  const { request: requestA } = await makeBuyerWithRequest("COMPRAR");
+  const { request: requestB } = await makeBuyerWithRequest("COMPRAR");
+  const { user: agentUser, profile: agentProfile } = await makeAgent(50);
+  const property = await createProperty(agentProfile.id, {
+    operationType: "COMPRAR",
+    propertyType: "DEPARTAMENTO",
+    title: "Propiedad de prueba para métricas",
+    price: 120000,
+    provincia: "Pichincha",
+    ciudad: "Quito",
+    squareMeters: 90,
+  });
+
+  // Un desbloqueo CON propiedad de origen y otro SIN ella.
+  await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: requestA.id,
+    propertyId: property.id,
+  });
+  await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: requestB.id,
+  });
+
+  const after = await getMarketplaceMetrics();
+  assert.equal(after.leads.unlocked, before.leads.unlocked + 2);
+  assert.equal(after.leads.unlockedFromProperty, before.leads.unlockedFromProperty + 1);
 });
 
 test("créditos vendidos e ingresos solo cuentan compras APPROVED, nunca PENDING ni REJECTED", async () => {

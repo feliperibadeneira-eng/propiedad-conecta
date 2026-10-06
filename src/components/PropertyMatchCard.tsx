@@ -13,6 +13,7 @@ import type { OperationType } from "@/generated/prisma/enums";
 // enlaza), no acá. El matching solo descubre la oportunidad.
 export function PropertyMatchCard({
   id,
+  propertyId,
   operationType,
   ciudad,
   sector,
@@ -24,6 +25,11 @@ export function PropertyMatchCard({
   matchScore,
 }: {
   id: string;
+  // Propiedad desde la que se calculó este match — se adjunta al link para
+  // que, si el agente desbloquea desde acá, quede registrada como origen
+  // (ver PR #14 / LeadPurchase.propertyId). Solo una pista de UX: la
+  // validación real ocurre en purchaseWithCredits().
+  propertyId: string;
   operationType: OperationType;
   ciudad: string;
   sector: string | null;
@@ -35,7 +41,7 @@ export function PropertyMatchCard({
   matchScore: number;
 }) {
   return (
-    <Link href={`/dashboard/agent/leads/${id}`}>
+    <Link href={`/dashboard/agent/leads/${id}?propertyId=${propertyId}`}>
       <Card interactive className="p-5">
         <div className="flex items-start justify-between gap-3">
           <p className="font-semibold">

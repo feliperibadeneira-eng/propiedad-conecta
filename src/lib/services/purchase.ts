@@ -69,6 +69,30 @@ async function assertPurchasable(
   return request;
 }
 
+// Si se pasa un propertyId, debe existir y pertenecer a este agente — sin
+// importar su status (DISPONIBLE/PAUSADA/CERRADA): la atribución es un
+// hecho histórico de "con qué propiedad se iba a contactar en este
+// momento", no una referencia que deba seguir vigente (ver el informe de
+// PR #14). A propósito NO se filtra por status acá.
+//
+// Si el propertyId es inválido o pertenece a otro agente, se rechaza TODO
+// el desbloqueo (nunca se degrada a null en silencio) — un valor inválido
+// representa un problema de autorización, navegación o manipulación del
+// parámetro, y la atribución debe ser confiable o no existir.
+async function assertPropertyOwnership(
+  db: Db,
+  propertyId: string,
+  agentProfileId: string,
+) {
+  const property = await db.property.findFirst({
+    where: { id: propertyId, agentId: agentProfileId },
+    select: { id: true },
+  });
+  if (!property) {
+    throw new PurchaseError("La propiedad de origen no existe o no te pertenece.");
+  }
+}
+
 // El backend es la única fuente de verdad sobre si un pago se confirmó
 // (regla 6/7 y sección 17): esta función solo se llama desde el webhook de
 // Stripe (o, en modo demo, desde el simulador de pago del propio backend).
@@ -199,6 +223,9 @@ export async function purchaseWithCredits(params: {
   agentUserId: string;
   agentProfileId: string;
   requestId: string;
+  // Propiedad desde la que se originó este desbloqueo (opcional — ver
+  // assertPropertyOwnership). Nunca participa en el costo del unlock.
+  propertyId?: string;
 }) {
   const leadPurchase = await prisma.$transaction(async (tx) => {
     // 1-3: la solicitud sigue disponible, el agente no la compró antes,
@@ -209,6 +236,11 @@ export async function purchaseWithCredits(params: {
       params.requestId,
       params.agentProfileId,
     );
+    // Si se pasó una propiedad de origen, debe ser válida ANTES de cobrar
+    // ningún crédito — si falla, no se descuenta balance ni se crea nada.
+    if (params.propertyId) {
+      await assertPropertyOwnership(tx, params.propertyId, params.agentProfileId);
+    }
     const cost = getUnlockCost(request.operationType);
 
     // Verificar y descontar créditos de forma atómica: el update solo
@@ -247,6 +279,7 @@ export async function purchaseWithCredits(params: {
         requestId: request.id,
         agentId: params.agentProfileId,
         paymentId: payment.id,
+        propertyId: params.propertyId ?? null,
         pricePaid: cost,
         creditsUsed: cost,
         status: "PURCHASED",

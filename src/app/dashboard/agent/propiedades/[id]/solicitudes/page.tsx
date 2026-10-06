@@ -54,7 +54,7 @@ export default async function PropertyCompatibleRequestsPage({
         ) : (
           <div className="mt-6 space-y-4">
             {matches.map((m) => (
-              <PropertyMatchCard key={m.id} {...m} />
+              <PropertyMatchCard key={m.id} propertyId={property.id} {...m} />
             ))}
           </div>
         )}
