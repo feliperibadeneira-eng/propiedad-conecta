@@ -5,13 +5,21 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 // ej. el comprobante de pago es obligatorio, el QR de Deuna al reemplazar
 // la configuración no lo es). Tira un Error con mensaje en español si se
 // adjuntó algo que no es una imagen válida o supera el límite de tamaño.
+// `allowedTypes` restringe a una lista específica de MIME types (ej. fotos
+// de propiedad solo aceptan JPEG/PNG/WebP); si se omite, se acepta
+// cualquier `image/*` (comportamiento histórico, usado por comprobantes y
+// el QR de Deuna).
 export async function parseImageFormFile(
   value: FormDataEntryValue | null,
+  opts: { allowedTypes?: readonly string[] } = {},
 ): Promise<{ data: Uint8Array<ArrayBuffer>; mimeType: string } | null> {
   if (!(value instanceof File) || value.size === 0) return null;
 
   if (!value.type.startsWith("image/")) {
     throw new Error("El archivo debe ser una imagen.");
+  }
+  if (opts.allowedTypes && !opts.allowedTypes.includes(value.type)) {
+    throw new Error("Formato de imagen no permitido.");
   }
   if (value.size > MAX_IMAGE_BYTES) {
     throw new Error("La imagen no puede pesar más de 5MB.");

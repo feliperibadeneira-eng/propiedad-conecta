@@ -25,12 +25,23 @@ export async function listAgentProperties(agentProfileId: string) {
   return prisma.property.findMany({
     where: { agentId: agentProfileId },
     orderBy: { createdAt: "desc" },
+    include: {
+      // Solo el id de la portada, nunca los bytes — un listado no debe
+      // traer binarios de imagen.
+      images: { where: { isPrimary: true }, take: 1, select: { id: true } },
+    },
   });
 }
 
 export async function getAgentPropertyDetail(agentProfileId: string, propertyId: string) {
   return prisma.property.findFirst({
     where: { id: propertyId, agentId: agentProfileId },
+    include: {
+      images: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, isPrimary: true, sortOrder: true },
+      },
+    },
   });
 }
 
