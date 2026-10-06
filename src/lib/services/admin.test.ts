@@ -11,6 +11,7 @@ import { hashPassword } from "../password";
 import { getMarketplaceMetrics, ecuadorTodayStart } from "./admin";
 import { purchaseWithCredits } from "./purchase";
 import { createProperty } from "./properties";
+import { shareProperty } from "./propertyShares";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
@@ -163,6 +164,41 @@ test("leads.unlockedFromProperty solo cuenta desbloqueos con una Property de ori
   const after = await getMarketplaceMetrics();
   assert.equal(after.leads.unlocked, before.leads.unlocked + 2);
   assert.equal(after.leads.unlockedFromProperty, before.leads.unlockedFromProperty + 1);
+});
+
+test("leads.propertiesShared y leadsWithShare solo cuentan leads con >=1 PropertyShare (PR #15)", async () => {
+  const before = await getMarketplaceMetrics();
+  const { request: requestA } = await makeBuyerWithRequest("COMPRAR");
+  const { request: requestB } = await makeBuyerWithRequest("COMPRAR");
+  const { user: agentUser, profile: agentProfile } = await makeAgent(50);
+  const property = await createProperty(agentProfile.id, {
+    operationType: "COMPRAR",
+    propertyType: "DEPARTAMENTO",
+    title: "Propiedad de prueba para métricas de share",
+    price: 120000,
+    provincia: "Pichincha",
+    ciudad: "Quito",
+    squareMeters: 90,
+  });
+
+  const purchaseA = await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: requestA.id,
+  });
+  await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: requestB.id,
+  });
+
+  // Solo purchaseA recibe una propiedad compartida.
+  await shareProperty(agentProfile.id, purchaseA.id, property.id);
+
+  const after = await getMarketplaceMetrics();
+  assert.equal(after.leads.unlocked, before.leads.unlocked + 2);
+  assert.equal(after.leads.propertiesShared, before.leads.propertiesShared + 1);
+  assert.equal(after.leads.leadsWithShare, before.leads.leadsWithShare + 1);
 });
 
 test("créditos vendidos e ingresos solo cuentan compras APPROVED, nunca PENDING ni REJECTED", async () => {

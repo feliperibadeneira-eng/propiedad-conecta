@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { notify } from "@/lib/services/notifications";
 import { logEvent } from "@/lib/services/analytics";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
+import { SHARED_PROPERTY_SELECT } from "@/lib/services/propertyShares";
 import type { CreateRequestInput } from "@/lib/validators/request";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
@@ -99,6 +100,10 @@ export async function getBuyerRequestDetail(
         include: {
           agent: { include: { user: true } },
           exchange: true,
+          propertyShares: {
+            orderBy: { sentAt: "desc" },
+            include: { property: { select: SHARED_PROPERTY_SELECT } },
+          },
         },
         orderBy: { purchasedAt: "desc" },
       },
