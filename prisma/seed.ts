@@ -500,6 +500,17 @@ async function main() {
           agentId: s.purchasedBy.user.id,
         },
       });
+      // Conversation vacía para cada LeadPurchase de prueba (PR #17 la
+      // requiere para poder abrir el chat — sin esto, getConversationFor
+      // Agent/Buyer lanza ConversationError contra cualquier dato de seed).
+      // No se crean ConversationMessage de ejemplo: fuera del alcance de
+      // este cambio. prisma.leadPurchase.deleteMany() más abajo ya cascadea
+      // el borrado de esta fila (Conversation.leadPurchase onDelete:
+      // Cascade), así que el seed sigue siendo idempotente sin tocar el
+      // bloque de limpieza.
+      await prisma.conversation.create({
+        data: { leadPurchaseId: leadPurchase.id },
+      });
       await prisma.propertyRequest.update({
         where: { id: request.id },
         data: { status: "EN_PROCESO" },
