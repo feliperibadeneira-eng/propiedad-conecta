@@ -175,6 +175,12 @@ export default async function PurchasedLeadsPage({
                         </button>
                       </form>
                     )}
+                    <Link
+                      href={`/dashboard/agent/leads/purchased/${p.requestId}`}
+                      className={buttonClasses("secondary", "sm")}
+                    >
+                      Ver conversación
+                    </Link>
                     {active && <ReleaseLeadDialog leadPurchaseId={p.id} />}
                     {canRequestRefund && <RequestRefundDialog leadPurchaseId={p.id} />}
                   </div>

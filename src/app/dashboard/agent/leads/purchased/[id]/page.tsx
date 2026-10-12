@@ -7,6 +7,7 @@ import { listAgentProperties } from "@/lib/services/properties";
 import { listSharedPropertiesForAgent } from "@/lib/services/propertyShares";
 import { getRefundEligibleHours } from "@/lib/settings";
 import { isEligibleForRefundRequest } from "@/lib/services/purchase";
+import { listMessagesForAgent, ConversationError } from "@/lib/services/conversation";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -20,6 +21,7 @@ import { AGENT_NAV_LINKS } from "../../../nav";
 import { markContactedAction, markAppointmentAction, sharePropertyAction } from "../actions";
 import { ReleaseLeadDialog } from "../ReleaseLeadDialog";
 import { RequestRefundDialog } from "../RequestRefundDialog";
+import { ChatPanel } from "./ChatPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,17 @@ export default async function PurchasedLeadDetailPage({
   ]);
   const availableProperties = myProperties.filter((p) => p.status === "DISPONIBLE");
   const sharedPropertyIds = new Set(sharedProperties.map((s) => s.propertyId));
+
+  // LeadPurchase creados por purchaseWithCredits() siempre traen su
+  // Conversation (ver PR #16, misma transacción) — esto solo protege datos
+  // legacy anteriores a ese cambio, no el camino normal.
+  let initialMessages: Awaited<ReturnType<typeof listMessagesForAgent>>["messages"] | null = null;
+  try {
+    const page = await listMessagesForAgent(user.agentProfileId!, purchase.id);
+    initialMessages = page.messages;
+  } catch (e) {
+    if (!(e instanceof ConversationError)) throw e;
+  }
 
   const active = OCCUPYING_STATUSES.includes(purchase.status);
   const canRequestRefund = isEligibleForRefundRequest(purchase, refundEligibleHours);
@@ -170,6 +183,12 @@ export default async function PurchasedLeadDetailPage({
             </div>
           )}
         </Card>
+
+        <ChatPanel
+          leadPurchaseId={purchase.id}
+          currentUserId={user.id}
+          initialMessages={initialMessages}
+        />
 
         <Card className="mt-6 p-6">
           <div className="flex items-center gap-2">
