@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ImageOff } from "lucide-react";
 import { requireBuyer } from "@/lib/auth";
 import { getBuyerRequestDetail } from "@/lib/services/requests";
+import { listMessagesForBuyer, ConversationError } from "@/lib/services/conversation";
 import { BRAND_NAME } from "@/lib/brand";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
@@ -26,6 +27,7 @@ import {
   markOutcomeAction,
 } from "./actions";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
+import { ConversationPanel } from "./ConversationPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,27 @@ export default async function BuyerRequestDetailPage({
 
   const activePurchases = request.purchases.filter((p) =>
     OCCUPYING_STATUSES.includes(p.status),
+  );
+
+  // Un fetch independiente por LeadPurchase (N es como mucho maxAgents, 1/3/5)
+  // — cada conversación se carga y se aísla por separado, nunca se mezclan.
+  // LeadPurchase creados por purchaseWithCredits() siempre traen su
+  // Conversation (PR #16, misma transacción); esto solo protege datos
+  // legacy sin Conversation.
+  const messagesByPurchase = new Map<
+    string,
+    Awaited<ReturnType<typeof listMessagesForBuyer>>["messages"] | null
+  >();
+  await Promise.all(
+    request.purchases.map(async (p) => {
+      try {
+        const page = await listMessagesForBuyer(user.buyerProfileId!, p.id);
+        messagesByPurchase.set(p.id, page.messages);
+      } catch (e) {
+        if (!(e instanceof ConversationError)) throw e;
+        messagesByPurchase.set(p.id, null);
+      }
+    }),
   );
 
   return (
@@ -213,6 +236,12 @@ export default async function BuyerRequestDetailPage({
                     </div>
                   </div>
                 )}
+                <ConversationPanel
+                  leadPurchaseId={p.id}
+                  currentUserId={user.id}
+                  initialMessages={messagesByPurchase.get(p.id) ?? null}
+                />
+
                 {OCCUPYING_STATUSES.includes(p.status) && (
                   <form
                     action={markOutcomeAction.bind(null, request.id)}
