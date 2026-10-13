@@ -508,6 +508,15 @@ model ContactExchange {
   agentId        String
   revealedAt     DateTime @default(now())
 
+  // Fin de la ventana de protección de contacto (horas configurables, ver
+  // SETTINGS.contactProtectionHours). Null para filas creadas antes de esta
+  // función (sin backfill, a propósito) o si la protección está desactivada
+  // — en ambos casos el contacto se considera accesible de inmediato, igual
+  // que el comportamiento histórico. Calculado una sola vez al comprar, no
+  // en cada lectura, para que una compra vieja nunca cambie de comportamiento
+  // aunque después se edite la configuración de horas.
+  protectedUntil DateTime?
+
   request      PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   leadPurchase LeadPurchase    @relation(fields: [leadPurchaseId], references: [id], onDelete: Cascade)
 

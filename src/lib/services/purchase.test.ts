@@ -7,11 +7,18 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { hashPassword } from "../password";
-import { purchaseWithCredits, PurchaseError } from "./purchase";
+import {
+  purchaseWithCredits,
+  confirmPaymentById,
+  PurchaseError,
+  computeContactProtectionDeadline,
+  isContactAccessible,
+} from "./purchase";
 import { getPurchasedLeadDetail } from "./leads";
 import { getUnlockCost } from "./credits";
 import { createProperty } from "./properties";
 import { createRequestSchema } from "../validators/request";
+import { getContactProtectionHours } from "../settings";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
@@ -458,4 +465,99 @@ test("operationType sigue siendo obligatorio: sin él, el schema rechaza la soli
       ),
     );
   }
+});
+
+// ---------- Protección de contacto (PR A: configuración y reglas
+// fundamentales únicamente — nada bloquea el contacto todavía) ----------
+
+test("computeContactProtectionDeadline suma las horas de protección a revealedAt", () => {
+  const revealedAt = new Date("2026-01-01T00:00:00.000Z");
+  const deadline = computeContactProtectionDeadline(revealedAt, 24);
+  assert.equal(deadline.toISOString(), "2026-01-02T00:00:00.000Z");
+});
+
+test("computeContactProtectionDeadline con 0 horas: el plazo es el mismo instante", () => {
+  const revealedAt = new Date("2026-01-01T00:00:00.000Z");
+  const deadline = computeContactProtectionDeadline(revealedAt, 0);
+  assert.equal(deadline.getTime(), revealedAt.getTime());
+});
+
+test("isContactAccessible: protectedUntil null (compra anterior a esta función) siempre es accesible", () => {
+  assert.equal(isContactAccessible({ protectedUntil: null }), true);
+});
+
+test("isContactAccessible: todavía no llega el plazo, no es accesible", () => {
+  const now = new Date("2026-01-01T12:00:00.000Z");
+  const protectedUntil = new Date("2026-01-02T00:00:00.000Z");
+  assert.equal(isContactAccessible({ protectedUntil }, now), false);
+});
+
+test("isContactAccessible: ya pasó el plazo, es accesible (liberación por tiempo)", () => {
+  const now = new Date("2026-01-02T00:00:00.000Z");
+  const protectedUntil = new Date("2026-01-01T00:00:00.000Z");
+  assert.equal(isContactAccessible({ protectedUntil }, now), true);
+});
+
+test("isContactAccessible: consentimiento explícito libera antes de tiempo, aunque el plazo no haya llegado", () => {
+  const now = new Date("2026-01-01T01:00:00.000Z");
+  const protectedUntil = new Date("2026-01-02T00:00:00.000Z");
+  assert.equal(
+    isContactAccessible({ protectedUntil, consentReleasedAt: now }, now),
+    true,
+  );
+});
+
+test("purchaseWithCredits guarda protectedUntil usando la configuración vigente", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+  const agent = await makeAgent(20);
+
+  const protectionHours = await getContactProtectionHours();
+  const before = new Date();
+  const purchase = await purchaseWithCredits({
+    agentUserId: agent.user.id,
+    agentProfileId: agent.profile.id,
+    requestId: request.id,
+  });
+
+  const exchange = await prisma.contactExchange.findUniqueOrThrow({
+    where: { leadPurchaseId: purchase.id },
+  });
+  assert.ok(
+    exchange.protectedUntil,
+    "protectedUntil debe quedar establecido en compras nuevas",
+  );
+  const expected = computeContactProtectionDeadline(before, protectionHours);
+  const diffMs = Math.abs(exchange.protectedUntil!.getTime() - expected.getTime());
+  assert.ok(
+    diffMs < 5000,
+    `protectedUntil debe ser ~revealedAt + ${protectionHours}h (diff: ${diffMs}ms)`,
+  );
+});
+
+test("confirmPaymentById también guarda protectedUntil (mismo cálculo que purchaseWithCredits)", async () => {
+  const { request } = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(request.id);
+  const agent = await makeAgent(0);
+
+  const payment = await prisma.payment.create({
+    data: {
+      agentId: agent.profile.id,
+      requestId: request.id,
+      amount: getUnlockCost(request.operationType),
+      status: "PENDING",
+    },
+  });
+
+  const protectionHours = await getContactProtectionHours();
+  const before = new Date();
+  const result = await confirmPaymentById(payment.id);
+  assert.ok(result, "debe confirmar el pago y crear el LeadPurchase");
+
+  const exchange = await prisma.contactExchange.findUniqueOrThrow({
+    where: { leadPurchaseId: result!.id },
+  });
+  const expected = computeContactProtectionDeadline(before, protectionHours);
+  const diffMs = Math.abs(exchange.protectedUntil!.getTime() - expected.getTime());
+  assert.ok(diffMs < 5000, `protectedUntil debe ser ~revealedAt + ${protectionHours}h`);
 });
