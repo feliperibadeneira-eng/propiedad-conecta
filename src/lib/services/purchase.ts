@@ -13,9 +13,44 @@ import {
   REACTIVATION_ELIGIBLE_STATUSES,
   REFUND_ELIGIBLE_STATUSES,
 } from "@/lib/services/constants";
-import { getReactivationHours, getRefundEligibleHours } from "@/lib/settings";
+import {
+  getReactivationHours,
+  getRefundEligibleHours,
+  getContactProtectionHours,
+} from "@/lib/settings";
 
 export class PurchaseError extends Error {}
+
+// ---------- Protección de contacto (ventana tras la compra) ----------
+//
+// Reglas fundamentales únicamente: este módulo todavía no las usa para
+// bloquear nada (eso es el PR que implementa el control de acceso real).
+// Aquí solo se calcula y persiste protectedUntil al momento de comprar, y
+// se deja lista la función que una capa de lectura futura usará para
+// decidir si el teléfono/WhatsApp/email del comprador se puede mostrar.
+
+// protectedUntil se calcula una sola vez, con el valor de configuración
+// vigente en el momento de la compra — nunca se recalcula después, para
+// que cambiar la configuración no altere compras ya hechas.
+export function computeContactProtectionDeadline(
+  revealedAt: Date,
+  protectionHours: number,
+): Date {
+  return new Date(revealedAt.getTime() + protectionHours * 60 * 60 * 1000);
+}
+
+// consentReleasedAt no tiene columna todavía (no existe ninguna acción que
+// lo pueda establecer en este PR) — el parámetro ya está en la firma para
+// que ese PR futuro solo necesite agregar la columna y empezar a pasarla,
+// sin tocar esta función.
+export function isContactAccessible(
+  exchange: { protectedUntil: Date | null; consentReleasedAt?: Date | null },
+  now: Date = new Date(),
+): boolean {
+  if (exchange.protectedUntil === null) return true; // compra anterior a esta función, o protección desactivada
+  if (exchange.consentReleasedAt) return true;
+  return now >= exchange.protectedUntil;
+}
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -98,6 +133,10 @@ async function assertPropertyOwnership(
 // Stripe (o, en modo demo, desde el simulador de pago del propio backend).
 // Es idempotente: si el LeadPurchase ya existe, no hace nada más.
 export async function confirmPaymentById(paymentId: string) {
+  // Fuera de la transacción a propósito: es una lectura async a la base de
+  // datos, igual que getReactivationHours/getRefundEligibleHours en el resto
+  // de este archivo — nunca se llama a prisma.* dentro de un $transaction.
+  const protectionHours = await getContactProtectionHours();
   return prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({
       where: { id: paymentId },
@@ -147,6 +186,10 @@ export async function confirmPaymentById(paymentId: string) {
         leadPurchaseId: leadPurchase.id,
         buyerId: payment.request.buyer.userId,
         agentId: payment.agent.userId,
+        protectedUntil: computeContactProtectionDeadline(
+          new Date(),
+          protectionHours,
+        ),
       },
     });
 
@@ -227,6 +270,10 @@ export async function purchaseWithCredits(params: {
   // assertPropertyOwnership). Nunca participa en el costo del unlock.
   propertyId?: string;
 }) {
+  // Fuera de la transacción a propósito, igual que getReactivationHours en
+  // reactivateLeadPurchase: nunca se llama a prisma.* (fuera de tx.*) con
+  // una transacción interactiva abierta.
+  const protectionHours = await getContactProtectionHours();
   const leadPurchase = await prisma.$transaction(async (tx) => {
     // 1-3: la solicitud sigue disponible, el agente no la compró antes,
     // hay cupo. Se revalida aquí adentro (no se reutiliza ningún dato leído
@@ -292,6 +339,10 @@ export async function purchaseWithCredits(params: {
         leadPurchaseId: created.id,
         buyerId: request.buyer.userId,
         agentId: params.agentUserId,
+        protectedUntil: computeContactProtectionDeadline(
+          new Date(),
+          protectionHours,
+        ),
       },
     });
 

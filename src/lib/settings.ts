@@ -8,6 +8,10 @@ export const SETTINGS = {
   // Sección 7: horas mínimas desde que el agente marca "Contacté al lead"
   // antes de poder pedir la devolución del crédito.
   refundEligibleHours: { key: "refund_eligible_hours", default: "48" },
+  // Horas que el teléfono/WhatsApp/email del comprador permanecen
+  // protegidos tras la compra del lead (el chat funciona igual durante
+  // este período). Ver ContactExchange.protectedUntil en purchase.ts.
+  contactProtectionHours: { key: "contact_protection_hours", default: "24" },
   startingCredits: { key: "starting_credits", default: "20" },
   // Sección 4: instrucciones de pago manual para comprar créditos. Vacío
   // por defecto a propósito — nunca inventamos datos bancarios; el admin
@@ -77,6 +81,10 @@ export async function getReactivationHours(): Promise<number> {
 
 export async function getRefundEligibleHours(): Promise<number> {
   return getSettingNumber(SETTINGS.refundEligibleHours);
+}
+
+export async function getContactProtectionHours(): Promise<number> {
+  return getSettingNumber(SETTINGS.contactProtectionHours);
 }
 
 export async function getStartingCredits(): Promise<number> {
