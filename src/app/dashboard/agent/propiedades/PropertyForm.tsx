@@ -205,7 +205,7 @@ export function PropertyForm({
       )}
 
       {state.error && (
-        <p className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger">{state.error}</p>
+        <p className="bg-danger-bg px-4 py-3 text-sm text-danger">{state.error}</p>
       )}
 
       <Button type="submit" size="lg" disabled={pending} className="w-full">

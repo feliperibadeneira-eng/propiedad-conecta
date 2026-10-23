@@ -3,6 +3,7 @@
 import { useActionState, useRef } from "react";
 import { submitCreditPurchaseAction, type SubmitPurchaseState } from "./actions";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
 import { formatUSD } from "@/lib/format";
 import type { CreditPackageType } from "@/generated/prisma/enums";
 
@@ -37,7 +38,7 @@ export function BuyCreditsDialog({
 
       <dialog
         ref={dialogRef}
-        className="w-full max-w-md rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses("md")}
       >
         {state.success ? (
           <div className="p-6 text-center">
@@ -59,7 +60,7 @@ export function BuyCreditsDialog({
         ) : (
           <form action={formAction} className="p-6" encType="multipart/form-data">
             <h2 className="text-lg font-bold">Completa tu pago</h2>
-            <div className="mt-3 flex items-center justify-between rounded-xl bg-surface-hover px-4 py-3">
+            <div className="mt-3 flex items-center justify-between bg-surface-hover px-4 py-3">
               <span className="text-sm text-muted">
                 Paquete {name} · {credits} créditos
               </span>
@@ -77,7 +78,7 @@ export function BuyCreditsDialog({
               </a>
             )}
 
-            <div className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted">
+            <div className="mt-4 border border-dashed border-border p-4 text-sm text-muted">
               {paymentInstructions ? (
                 <p className="whitespace-pre-line">{paymentInstructions}</p>
               ) : (
@@ -98,7 +99,7 @@ export function BuyCreditsDialog({
                 type="file"
                 accept="image/*"
                 required
-                className="block w-full text-sm text-muted file:mr-3 file:rounded-xl file:border-0 file:bg-surface-hover file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-foreground"
+                className="block w-full text-sm text-muted file:mr-3 file:rounded-none file:border-0 file:bg-surface-hover file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-foreground"
               />
               <p className="mt-1 text-xs text-muted-2">
                 Sube una captura o foto del comprobante de pago (PayPhone o

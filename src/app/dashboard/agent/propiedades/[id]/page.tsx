@@ -73,7 +73,7 @@ export default async function AgentPropertyDetailPage({
 
         {primaryPhoto ? (
           <div className="mt-5">
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl border border-border bg-surface-hover">
+            <div className="aspect-[4/3] w-full overflow-hidden border border-border bg-surface-hover">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={propertyPhotoUrl(primaryPhoto.id)}
@@ -89,7 +89,7 @@ export default async function AgentPropertyDetailPage({
                     key={img.id}
                     src={propertyPhotoUrl(img.id)}
                     alt=""
-                    className="h-20 w-20 shrink-0 rounded-lg border border-border object-cover"
+                    className="h-20 w-20 shrink-0 border border-border object-cover"
                   />
                 ))}
               </div>

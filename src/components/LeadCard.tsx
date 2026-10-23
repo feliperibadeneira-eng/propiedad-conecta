@@ -98,7 +98,7 @@ export function LeadCard({
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-between rounded-xl bg-surface-hover px-3 py-2.5">
+        <div className="mt-4 flex items-center justify-between bg-surface-hover px-3 py-2.5">
           <span className="text-sm text-muted">Desbloquear contacto</span>
           <span className="font-semibold">
             {unlockCost} crédito{unlockCost !== 1 ? "s" : ""}

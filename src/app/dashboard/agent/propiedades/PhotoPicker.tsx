@@ -40,7 +40,7 @@ export function PhotoPicker({ name, maxFiles }: { name: string; maxFiles: number
         accept="image/jpeg,image/png,image/webp"
         multiple
         onChange={handleChange}
-        className="block text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-hover file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground"
+        className="block text-sm text-muted file:mr-3 file:rounded-none file:border-0 file:bg-surface-hover file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground"
       />
       <p className="text-xs text-muted-2">
         {previews.length}/{maxFiles} fotos seleccionadas. JPEG, PNG o WebP, máximo 5MB cada una.
@@ -50,7 +50,7 @@ export function PhotoPicker({ name, maxFiles }: { name: string; maxFiles: number
           {previews.map((p, i) => (
             <div
               key={p.url}
-              className="relative h-24 w-24 overflow-hidden rounded-lg border border-border"
+              className="relative h-24 w-24 overflow-hidden border border-border"
             >
               {/* Preview de un blob: URL local — next/image no aplica acá. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
 export function WhatsAppButton({
@@ -27,7 +28,7 @@ export function WhatsAppButton({
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses()}
       >
         <div className="p-5">
           <h3 className="font-semibold">Edita el mensaje antes de enviar</h3>

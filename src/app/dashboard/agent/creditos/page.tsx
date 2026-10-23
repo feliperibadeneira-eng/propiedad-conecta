@@ -105,7 +105,7 @@ export default async function AgentCreditsPage() {
               <img
                 src={deunaQrImage}
                 alt="QR de Deuna para pagar créditos"
-                className="mx-auto mt-3 h-48 w-48 rounded-xl border border-border object-contain"
+                className="mx-auto mt-3 h-48 w-48 border border-border object-contain"
               />
               {paymentInstructions && (
                 <p className="mt-3 whitespace-pre-line text-sm text-muted">

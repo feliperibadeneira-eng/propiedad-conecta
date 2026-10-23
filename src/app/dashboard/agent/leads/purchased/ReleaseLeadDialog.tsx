@@ -3,6 +3,8 @@
 import { useRef } from "react";
 import { releaseLeadAction } from "./actions";
 import { Button } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
+import { inputBase } from "@/components/ui/Field";
 import { RELEASE_REASONS } from "@/lib/enums";
 
 export function ReleaseLeadDialog({ leadPurchaseId }: { leadPurchaseId: string }) {
@@ -20,7 +22,7 @@ export function ReleaseLeadDialog({ leadPurchaseId }: { leadPurchaseId: string }
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses()}
       >
         <form
           action={releaseLeadAction.bind(null, leadPurchaseId)}
@@ -31,7 +33,7 @@ export function ReleaseLeadDialog({ leadPurchaseId }: { leadPurchaseId: string }
             Se libera el cupo para que otro agente pueda comprarlo. Esta
             acción queda registrada.
           </p>
-          <select name="reason" className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm">
+          <select name="reason" className={`mt-3 ${inputBase}`}>
             {RELEASE_REASONS.map((r) => (
               <option key={r} value={r}>
                 {r}

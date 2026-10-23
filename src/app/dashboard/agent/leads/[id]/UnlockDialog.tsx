@@ -3,6 +3,7 @@
 import { useActionState, useRef } from "react";
 import { unlockLeadAction, type UnlockState } from "./actions";
 import { Button } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
 
 const initialState: UnlockState = {};
 
@@ -32,7 +33,7 @@ export function UnlockDialog({
 
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses()}
       >
         <form action={formAction} className="p-6">
           <h2 className="text-lg font-bold">Desbloquear esta solicitud</h2>
@@ -41,7 +42,7 @@ export function UnlockDialog({
             los datos de contacto del interesado, y el interesado recibirá
             tus datos de contacto.
           </p>
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-surface-hover px-4 py-3">
+          <div className="mt-4 flex items-center justify-between bg-surface-hover px-4 py-3">
             <span className="text-sm text-muted">Créditos disponibles</span>
             <span className="text-lg font-bold">{creditsBalance}</span>
           </div>

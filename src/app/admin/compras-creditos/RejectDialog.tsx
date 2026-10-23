@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { rejectCreditPurchaseAction } from "./actions";
 import { Button } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
 import { inputBase } from "@/components/ui/Field";
 
 export function RejectDialog({ requestId }: { requestId: string }) {
@@ -20,7 +21,7 @@ export function RejectDialog({ requestId }: { requestId: string }) {
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses()}
       >
         <form action={rejectCreditPurchaseAction.bind(null, requestId)} className="p-5">
           <h3 className="font-semibold">Rechazar este pago</h3>
