@@ -3,6 +3,7 @@
 import { useActionState, useRef } from "react";
 import { requestRefundAction, type RequestRefundState } from "./actions";
 import { Button } from "@/components/ui/Button";
+import { dialogClasses } from "@/components/ui/Modal";
 
 const initialState: RequestRefundState = {};
 
@@ -25,7 +26,7 @@ export function RequestRefundDialog({ leadPurchaseId }: { leadPurchaseId: string
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-2xl border border-border p-0 backdrop:bg-black/40"
+        className={dialogClasses()}
       >
         <form action={formAction} className="p-5">
           <h3 className="font-semibold">

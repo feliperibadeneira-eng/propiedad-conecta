@@ -73,7 +73,7 @@ export function ChatPanel({
             return (
               <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[75%] rounded-xl px-3.5 py-2.5 text-sm ${
+                  className={`max-w-[75%] px-3.5 py-2.5 text-sm ${
                     isOwn
                       ? "bg-accent text-accent-foreground"
                       : "bg-surface-hover text-foreground"

@@ -7,7 +7,7 @@ export function Card({
 }: HTMLAttributes<HTMLDivElement> & { interactive?: boolean }) {
   return (
     <div
-      className={`rounded-2xl border border-border bg-surface shadow-sm ${
+      className={`rounded-none border border-border bg-surface shadow-sm ${
         interactive
           ? "transition hover:border-border-hover hover:shadow-md"
           : ""

@@ -1,39 +1,50 @@
 @import "tailwindcss";
 
 /*
- * Identidad visual de Propiedad Conecta: minimalista, profesional, cercana.
+ * Identidad visual de Propiedad Conecta: editorial, segura, cálida.
  * Nada de estética de "inmobiliaria tradicional" (sin tonos tierra/dorado);
  * verde oscuro (color del logo) como acento primario + verde brillante
- * (también del logo) como acento secundario, sobre fondos blancos y gris
- * muy claro. Ambos tomados directo del logo actual (promedio de píxeles
- * del lado oscuro / lado claro del ícono), no inventados.
+ * (también del logo) como acento secundario — sin cambios, tomados directo
+ * del logo actual (promedio de píxeles del lado oscuro / lado claro del
+ * ícono). El resto de la escala (fondo, superficies, bordes, texto) usa una
+ * base papel/crema cálida en vez de gris azulado. Bricolage Grotesque para
+ * títulos (via la regla global h1-h4 más abajo) + Manrope para cuerpo/UI.
+ * Esquinas a cero en toda la interfaz (ver `rounded-none` en los
+ * componentes de src/components/ui/*) — geométrico y editorial en vez del
+ * "rounded-xl genérico" por defecto.
  */
 :root {
-  --background: #f7f8fb;
-  --background-alt: #ffffff;
+  --background: #fbf9f4;
+  --background-alt: #f6f1e4;
   --surface: #ffffff;
-  --surface-hover: #f1f3f9;
-  --border: #e4e7f0;
-  --border-hover: #c9cee0;
+  --surface-hover: #efe8d6;
+  --border: #e4ddc9;
+  --border-hover: #d2c6ac;
 
-  --foreground: #10192e;
-  --muted: #5b6079;
-  --muted-2: #8b8fa3;
+  --foreground: #1b1f1a;
+  --muted: #5c6358;
+  --muted-2: #9a9384;
 
   --accent: #173125;
   --accent-hover: #0f2018;
   --accent-foreground: #ffffff;
   --accent-2: #2f7d2a;
+  --accent-2-hover: #58b34e;
 
   --success: #16a34a;
-  --success-bg: #e9f9ef;
+  --success-bg: #eaf6e8;
   --danger: #e11d48;
-  --danger-bg: #fdecef;
+  --danger-bg: #fbeaeb;
   --warning: #d97706;
-  --warning-bg: #fdf3e3;
+  --warning-bg: #fbf0dd;
 }
 
 @theme inline {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-manrope), ui-sans-serif,
+    sans-serif;
+
   --color-background: var(--background);
   --color-background-alt: var(--background-alt);
   --color-surface: var(--surface);
@@ -49,6 +60,7 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-2: var(--accent-2);
+  --color-accent-2-hover: var(--accent-2-hover);
 
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
@@ -65,4 +77,11 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
 }

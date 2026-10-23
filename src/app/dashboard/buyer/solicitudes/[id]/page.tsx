@@ -8,6 +8,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { inputBase } from "@/components/ui/Field";
 import { formatUSD, formatDate } from "@/lib/format";
 import { propertyPhotoUrl } from "@/lib/propertyPhotos";
 import {
@@ -111,7 +112,7 @@ export default async function BuyerRequestDetailPage({
           <h2 className="font-semibold">Configuración</h2>
           <form action={updateMaxAgentsAction.bind(null, request.id)} className="flex items-center gap-3">
             <span className="text-sm text-muted">Máximo de agentes:</span>
-            <select name="maxAgents" defaultValue={request.maxAgents} className="rounded-lg border border-border px-2 py-1 text-sm">
+            <select name="maxAgents" defaultValue={request.maxAgents} className={`${inputBase} w-auto`}>
               {[1, 3, 5].map((n) => (
                 <option key={n} value={n}>
                   {n}
@@ -189,9 +190,9 @@ export default async function BuyerRequestDetailPage({
                       {p.propertyShares.map((share) => (
                         <div
                           key={share.id}
-                          className="flex gap-3 rounded-xl border border-border p-3"
+                          className="flex gap-3 border border-border p-3"
                         >
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden bg-surface-hover">
                             {share.property?.images[0] ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
@@ -249,7 +250,7 @@ export default async function BuyerRequestDetailPage({
                   >
                     <input type="hidden" name="leadPurchaseId" value={p.id} />
                     <span className="text-sm text-muted">¿Qué ocurrió?</span>
-                    <select name="outcome" className="rounded-lg border border-border px-2 py-1 text-sm">
+                    <select name="outcome" className={`${inputBase} w-auto`}>
                       {BUYER_OUTCOME_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}

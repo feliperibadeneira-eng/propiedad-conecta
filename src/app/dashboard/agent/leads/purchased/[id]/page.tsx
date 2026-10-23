@@ -162,7 +162,7 @@ export default async function PurchasedLeadDetailPage({
                 return (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"
+                    className="flex items-center justify-between gap-3 border border-border p-3"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{p.title}</p>

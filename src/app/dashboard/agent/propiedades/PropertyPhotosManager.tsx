@@ -46,7 +46,7 @@ export function PropertyPhotosManager({
         <div className="flex flex-wrap gap-4">
           {photos.map((photo, i) => (
             <div key={photo.id} className="w-28 space-y-1.5">
-              <div className="relative h-24 w-28 overflow-hidden rounded-lg border border-border">
+              <div className="relative h-24 w-28 overflow-hidden border border-border">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={propertyPhotoUrl(photo.id)}

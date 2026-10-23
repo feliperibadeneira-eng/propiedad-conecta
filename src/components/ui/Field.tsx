@@ -24,6 +24,6 @@ export function Field({
 }
 
 const inputBase =
-  "w-full rounded-xl border border-border bg-background-alt px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
+  "w-full rounded-none border border-border bg-background-alt px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-2 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
 
 export { inputBase };
