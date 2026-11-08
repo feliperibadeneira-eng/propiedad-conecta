@@ -1,9 +1,19 @@
 import { prisma } from "@/lib/db";
 import { calculateMatchScore } from "@/lib/services/matching";
-import { computeTrustSignals } from "@/lib/services/trustSignals";
+import { computeTrustSignals, computeTrustSignalsBatch } from "@/lib/services/trustSignals";
 import { getUnlockCost } from "@/lib/services/credits";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
 import type { OperationType, PropertyType } from "@/generated/prisma/enums";
+
+// Lo que getCurrentUser() ya trae del AgentProfile en la sesión (ver
+// src/lib/auth.ts) — se pasa directo en vez de volver a consultar por id.
+// `null` cuando el agente no tiene perfil (mismo caso borde que antes
+// cubría `agent?.x ?? fallback`).
+export type AgentMatchProfile = {
+  workAreas: string[];
+  propertyTypes: PropertyType[];
+  creditsBalance: number;
+} | null;
 
 export type LeadFilters = {
   operationType?: OperationType;
@@ -16,6 +26,15 @@ export type LeadFilters = {
 };
 
 export type LeadSort = "recientes" | "compatibilidad" | "intencion";
+
+// Límite de seguridad, no paginación real todavía: hoy el marketplace
+// siempre muestra el total completo (sin controles de "siguiente página"),
+// así que no se puede recortar silenciosamente sin cambiar lo que el agente
+// ve. 100 es muy por encima del volumen actual (confirmado: 9 solicitudes en
+// los datos de prueba) — solo evita que un `findMany` sin tope crezca sin
+// límite si el volumen real aumenta mucho. Paginación de verdad (con UI)
+// queda fuera de este cambio.
+const MAX_MARKETPLACE_RESULTS = 100;
 
 function intentScore(request: {
   bedrooms: number | null;
@@ -46,13 +65,11 @@ async function agentAlreadyPurchasedIds(agentProfileId: string) {
 
 export async function getAvailableRequestsForAgent(
   agentProfileId: string,
+  agentMatchProfile: AgentMatchProfile,
   filters: LeadFilters,
   sort: LeadSort,
 ) {
   const excludeIds = await agentAlreadyPurchasedIds(agentProfileId);
-  const agent = await prisma.agentProfile.findUnique({
-    where: { id: agentProfileId },
-  });
 
   const requests = await prisma.propertyRequest.findMany({
     where: {
@@ -76,6 +93,7 @@ export async function getAvailableRequestsForAgent(
     },
     include: { purchases: true, features: true },
     orderBy: { createdAt: "desc" },
+    take: MAX_MARKETPLACE_RESULTS,
   });
 
   const withSlots = requests.filter((r) => {
@@ -85,25 +103,27 @@ export async function getAvailableRequestsForAgent(
     return occupied < r.maxAgents;
   });
 
-  const enriched = await Promise.all(
-    withSlots.map(async (r) => ({
-      ...r,
-      matchScore: calculateMatchScore(
-        {
-          ciudad: r.ciudad,
-          sector: r.sector,
-          propertyType: r.propertyType,
-          featureCount: r.features.length,
-        },
-        agent
-          ? { workAreas: agent.workAreas, propertyTypes: agent.propertyTypes }
-          : null,
-      ),
-      intentScore: intentScore(r),
-      unlockCost: getUnlockCost(r.operationType),
-      trustSignals: await computeTrustSignals(r),
-    })),
-  );
+  // Antes: computeTrustSignals(r) por fila → 2×N consultas (N = resultados).
+  // Ahora: una sola consulta por lote para todas las filas a la vez.
+  const trustSignalsByRequest = await computeTrustSignalsBatch(withSlots);
+
+  const enriched = withSlots.map((r) => ({
+    ...r,
+    matchScore: calculateMatchScore(
+      {
+        ciudad: r.ciudad,
+        sector: r.sector,
+        propertyType: r.propertyType,
+        featureCount: r.features.length,
+      },
+      agentMatchProfile
+        ? { workAreas: agentMatchProfile.workAreas, propertyTypes: agentMatchProfile.propertyTypes }
+        : null,
+    ),
+    intentScore: intentScore(r),
+    unlockCost: getUnlockCost(r.operationType),
+    trustSignals: trustSignalsByRequest.get(r.id) ?? [],
+  }));
 
   const sorted = [...enriched].sort((a, b) => {
     switch (sort) {
@@ -122,11 +142,9 @@ export async function getAvailableRequestsForAgent(
 
 export async function getRequestForAgentDetail(
   agentProfileId: string,
+  agentMatchProfile: AgentMatchProfile,
   requestId: string,
 ) {
-  const agent = await prisma.agentProfile.findUnique({
-    where: { id: agentProfileId },
-  });
   const request = await prisma.propertyRequest.findUnique({
     where: { id: requestId },
     include: { purchases: true, features: true },
@@ -149,13 +167,13 @@ export async function getRequestForAgentDetail(
         propertyType: request.propertyType,
         featureCount: request.features.length,
       },
-      agent
-        ? { workAreas: agent.workAreas, propertyTypes: agent.propertyTypes }
+      agentMatchProfile
+        ? { workAreas: agentMatchProfile.workAreas, propertyTypes: agentMatchProfile.propertyTypes }
         : null,
     ),
     availableSlots: request.maxAgents - occupied,
     alreadyPurchasedByThisAgent,
-    agentCreditsBalance: agent?.creditsBalance ?? 0,
+    agentCreditsBalance: agentMatchProfile?.creditsBalance ?? 0,
     unlockCost: getUnlockCost(request.operationType),
     trustSignals: await computeTrustSignals(request),
     isPurchasable:

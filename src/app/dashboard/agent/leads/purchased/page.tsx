@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { MessageCircle } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
 import { getPurchasedLeadsForAgent } from "@/lib/services/leads";
 import { getAgentLeadDashboard } from "@/lib/services/agentProfile";
+import { getUnreadCountsByLeadPurchaseForAgent } from "@/lib/services/conversation";
 import { getRefundEligibleHours } from "@/lib/settings";
 import { isEligibleForRefundRequest } from "@/lib/services/purchase";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -49,10 +51,11 @@ export default async function PurchasedLeadsPage({
 }) {
   const user = await requireAgent();
   const { status } = await searchParams;
-  const [purchases, dashboard, refundEligibleHours] = await Promise.all([
+  const [purchases, dashboard, refundEligibleHours, unreadByLeadPurchase] = await Promise.all([
     getPurchasedLeadsForAgent(user.agentProfileId!),
     getAgentLeadDashboard(user.agentProfileId!),
     getRefundEligibleHours(),
+    getUnreadCountsByLeadPurchaseForAgent(user.agentProfileId!, user.id),
   ]);
 
   const activeFilter = FILTERS.find((f) => f.value === (status ?? "")) ?? FILTERS[0];
@@ -60,18 +63,24 @@ export default async function PurchasedLeadsPage({
     ? purchases.filter((p) => activeFilter.statuses!.includes(p.status))
     : purchases;
 
+  // Fase 1.1: ya calculamos unreadByLeadPurchase arriba para los badges por
+  // fila — su suma es el mismo total que el header pediría por su cuenta,
+  // así que se lo pasamos para que no repita esa consulta al montar.
+  const totalUnread = Array.from(unreadByLeadPurchase.values()).reduce((a, b) => a + b, 0);
+
   return (
     <>
       <DashboardHeader
         userName={user.name}
         links={AGENT_NAV_LINKS}
-        creditsBalance={dashboard.creditsBalance}
+        creditsBalance={user.agentCreditsBalance ?? undefined}
+        initialUnreadCount={totalUnread}
       />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Mis leads</h1>
 
         <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-6">
-          <Stat label="Créditos disponibles" value={dashboard.creditsBalance} />
+          <Stat label="Créditos disponibles" value={user.agentCreditsBalance ?? 0} />
           <Stat label="Leads recibidos" value={dashboard.total} />
           <Stat label="Contactados" value={dashboard.contactados} />
           <Stat label="Respondieron" value={dashboard.respondieron} />
@@ -177,9 +186,17 @@ export default async function PurchasedLeadsPage({
                     )}
                     <Link
                       href={`/dashboard/agent/leads/purchased/${p.requestId}`}
-                      className={buttonClasses("secondary", "sm")}
+                      className={`${buttonClasses("secondary", "sm")} relative`}
                     >
                       Ver conversación
+                      {!!unreadByLeadPurchase.get(p.id) && (
+                        <span
+                          className="ml-1 flex items-center gap-1 bg-accent/10 px-1.5 text-accent"
+                          aria-label={`${unreadByLeadPurchase.get(p.id)} mensajes sin leer`}
+                        >
+                          <MessageCircle size={12} /> {unreadByLeadPurchase.get(p.id)}
+                        </span>
+                      )}
                     </Link>
                     {active && <ReleaseLeadDialog leadPurchaseId={p.id} />}
                     {canRequestRefund && <RequestRefundDialog leadPurchaseId={p.id} />}

@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
 import { getPurchasedLeadDetail } from "@/lib/services/leads";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { listAgentProperties } from "@/lib/services/properties";
 import { listSharedPropertiesForAgent } from "@/lib/services/propertyShares";
 import { getRefundEligibleHours } from "@/lib/settings";
@@ -32,9 +31,11 @@ export default async function PurchasedLeadDetailPage({
 }) {
   const { id: requestId } = await params;
   const user = await requireAgent();
-  const [purchase, creditsBalance, refundEligibleHours] = await Promise.all([
+  // Viene de la sesión (requireAgent() arriba) — no se vuelve a pedir el
+  // AgentProfile por id.
+  const creditsBalance = user.agentCreditsBalance ?? 0;
+  const [purchase, refundEligibleHours] = await Promise.all([
     getPurchasedLeadDetail(user.agentProfileId!, requestId),
-    getCreditsBalance(user.agentProfileId!),
     getRefundEligibleHours(),
   ]);
   if (!purchase) notFound();

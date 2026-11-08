@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
 import { getAgentPropertyDetail } from "@/lib/services/properties";
 import { listCompatibleRequestsForProperty } from "@/lib/services/propertyMatching";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { PropertyMatchCard } from "@/components/PropertyMatchCard";
@@ -18,17 +17,18 @@ export default async function PropertyCompatibleRequestsPage({
 }) {
   const { id } = await params;
   const user = await requireAgent();
-  const [property, creditsBalance] = await Promise.all([
-    getAgentPropertyDetail(user.agentProfileId!, id),
-    getCreditsBalance(user.agentProfileId!),
-  ]);
+  const property = await getAgentPropertyDetail(user.agentProfileId!, id);
   if (!property) notFound();
 
   const matches = await listCompatibleRequestsForProperty(user.agentProfileId!, id);
 
   return (
     <>
-      <DashboardHeader userName={user.name} links={AGENT_NAV_LINKS} creditsBalance={creditsBalance} />
+      <DashboardHeader
+        userName={user.name}
+        links={AGENT_NAV_LINKS}
+        creditsBalance={user.agentCreditsBalance ?? undefined}
+      />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <Link
           href={`/dashboard/agent/propiedades/${property.id}`}

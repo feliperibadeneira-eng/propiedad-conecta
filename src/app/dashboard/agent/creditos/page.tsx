@@ -1,5 +1,4 @@
 import { requireAgent } from "@/lib/auth";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { listCreditLedger, getUnlockCost } from "@/lib/services/credits";
 import { listCreditPurchasesForAgent } from "@/lib/services/creditPurchases";
 import { CREDIT_PACKAGES } from "@/lib/services/creditPackages";
@@ -19,9 +18,11 @@ const PACKAGE_ORDER: CreditPackageType[] = ["STARTER", "PRO", "PREMIUM"];
 
 export default async function AgentCreditsPage() {
   const user = await requireAgent();
-  const [creditsBalance, ledger, purchases, paymentInstructions, payphoneLinks, deunaQrImage] =
+  // Viene de la sesión (requireAgent() arriba) — no se vuelve a pedir el
+  // AgentProfile por id.
+  const creditsBalance = user.agentCreditsBalance ?? 0;
+  const [ledger, purchases, paymentInstructions, payphoneLinks, deunaQrImage] =
     await Promise.all([
-      getCreditsBalance(user.agentProfileId!),
       listCreditLedger(user.agentProfileId!, 30),
       listCreditPurchasesForAgent(user.agentProfileId!),
       getPaymentInstructions(),

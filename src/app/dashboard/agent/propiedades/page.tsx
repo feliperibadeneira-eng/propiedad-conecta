@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ImageOff } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
 import { listAgentProperties } from "@/lib/services/properties";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -23,14 +22,15 @@ const STATUS_TONE: Record<PropertyStatus, "success" | "warning" | "neutral"> = {
 
 export default async function AgentPropertiesPage() {
   const user = await requireAgent();
-  const [properties, creditsBalance] = await Promise.all([
-    listAgentProperties(user.agentProfileId!),
-    getCreditsBalance(user.agentProfileId!),
-  ]);
+  const properties = await listAgentProperties(user.agentProfileId!);
 
   return (
     <>
-      <DashboardHeader userName={user.name} links={AGENT_NAV_LINKS} creditsBalance={creditsBalance} />
+      <DashboardHeader
+        userName={user.name}
+        links={AGENT_NAV_LINKS}
+        creditsBalance={user.agentCreditsBalance ?? undefined}
+      />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

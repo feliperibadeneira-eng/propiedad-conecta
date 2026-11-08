@@ -3,6 +3,7 @@ import { notify } from "@/lib/services/notifications";
 import { logEvent } from "@/lib/services/analytics";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
 import { SHARED_PROPERTY_SELECT } from "@/lib/services/propertyShares";
+import { getUnreadCountsByLeadPurchaseForBuyer } from "@/lib/services/conversation";
 import type { CreateRequestInput } from "@/lib/validators/request";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
@@ -74,17 +75,33 @@ export async function createRequest(
   return request;
 }
 
-export async function listBuyerRequests(buyerProfileId: string) {
+// Fase 3 (rediseño de "Mis solicitudes"): indicador de no leídos por
+// solicitud. Reutiliza getUnreadCountsByLeadPurchaseForBuyer tal cual —
+// ninguna lógica de conteo nueva, ningún cambio en conversation.ts — y la
+// llama UNA sola vez (no por solicitud), sumando acá en memoria los
+// leadPurchaseId que pertenecen a cada PropertyRequest. Evita el N+1 que
+// significaría llamar al conteo dentro del .map() de abajo.
+export async function listBuyerRequests(buyerProfileId: string, buyerUserId: string) {
   const requests = await prisma.propertyRequest.findMany({
     where: { buyerId: buyerProfileId },
     orderBy: { createdAt: "desc" },
     include: { purchases: true },
   });
+
+  const unreadByLeadPurchase = await getUnreadCountsByLeadPurchaseForBuyer(
+    buyerProfileId,
+    buyerUserId,
+  );
+
   return requests.map((r) => ({
     ...r,
     connectedAgents: r.purchases.filter((p) =>
       OCCUPYING_STATUSES.includes(p.status),
     ).length,
+    unreadCount: r.purchases.reduce(
+      (sum, p) => sum + (unreadByLeadPurchase.get(p.id) ?? 0),
+      0,
+    ),
   }));
 }
 

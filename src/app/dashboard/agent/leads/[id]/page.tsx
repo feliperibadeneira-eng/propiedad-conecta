@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { requireAgent } from "@/lib/auth";
-import { getRequestForAgentDetail } from "@/lib/services/leads";
+import { getRequestForAgentDetail, type AgentMatchProfile } from "@/lib/services/leads";
 import { getAgentPropertyDetail } from "@/lib/services/properties";
 import { logEvent } from "@/lib/services/analytics";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -31,7 +31,19 @@ export default async function AgentLeadDetailPage({
   const { id } = await params;
   const { propertyId } = await searchParams;
   const user = await requireAgent();
-  const request = await getRequestForAgentDetail(user.agentProfileId!, id);
+
+  // Viene de la sesión (requireAgent() arriba) — no se vuelve a pedir el
+  // AgentProfile por id.
+  const agentMatchProfile: AgentMatchProfile =
+    user.agentWorkAreas != null && user.agentPropertyTypes != null && user.agentCreditsBalance != null
+      ? {
+          workAreas: user.agentWorkAreas,
+          propertyTypes: user.agentPropertyTypes,
+          creditsBalance: user.agentCreditsBalance,
+        }
+      : null;
+
+  const request = await getRequestForAgentDetail(user.agentProfileId!, agentMatchProfile, id);
   if (!request) notFound();
 
   // Solo para mostrar el nombre de la propiedad en pantalla — NO es la

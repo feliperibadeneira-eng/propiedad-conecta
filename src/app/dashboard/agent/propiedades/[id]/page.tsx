@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
 import { getAgentPropertyDetail } from "@/lib/services/properties";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -36,10 +35,7 @@ export default async function AgentPropertyDetailPage({
   const { id } = await params;
   const { created, updated, photoError } = await searchParams;
   const user = await requireAgent();
-  const [property, creditsBalance] = await Promise.all([
-    getAgentPropertyDetail(user.agentProfileId!, id),
-    getCreditsBalance(user.agentProfileId!),
-  ]);
+  const property = await getAgentPropertyDetail(user.agentProfileId!, id);
   if (!property) notFound();
 
   const primaryPhoto = property.images.find((img) => img.isPrimary) ?? property.images[0];
@@ -47,7 +43,11 @@ export default async function AgentPropertyDetailPage({
 
   return (
     <>
-      <DashboardHeader userName={user.name} links={AGENT_NAV_LINKS} creditsBalance={creditsBalance} />
+      <DashboardHeader
+        userName={user.name}
+        links={AGENT_NAV_LINKS}
+        creditsBalance={user.agentCreditsBalance ?? undefined}
+      />
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
         {created === "1" && (
           <Card className="mb-6 border-success/30 bg-success-bg p-4 text-sm text-success">
