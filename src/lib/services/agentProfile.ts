@@ -48,17 +48,15 @@ export async function getAgentStats(agentProfileId: string) {
 }
 
 // Resumen para "Mis leads" (sección 11 de la garantía de créditos).
+// `creditsBalance` ya no es parte de este resultado — el único caller lo
+// toma de la sesión (requireAgent()), que ya lo trae; evita la consulta de
+// AgentProfile que esto hacía solo por ese campo.
 export async function getAgentLeadDashboard(agentProfileId: string) {
-  const [agent, purchases] = await Promise.all([
-    prisma.agentProfile.findUniqueOrThrow({
-      where: { id: agentProfileId },
-      select: { creditsBalance: true },
-    }),
-    prisma.leadPurchase.findMany({ where: { agentId: agentProfileId } }),
-  ]);
+  const purchases = await prisma.leadPurchase.findMany({
+    where: { agentId: agentProfileId },
+  });
 
   return {
-    creditsBalance: agent.creditsBalance,
     total: purchases.length,
     nuevos: purchases.filter((p) => p.status === "PURCHASED").length,
     contactados: purchases.filter((p) => p.status === "CONTACTED").length,

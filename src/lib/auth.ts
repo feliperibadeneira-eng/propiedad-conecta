@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
-import type { UserRole } from "@/generated/prisma/enums";
+import type { UserRole, PropertyType } from "@/generated/prisma/enums";
 
 export { hashPassword, verifyPassword } from "@/lib/password";
 
@@ -51,6 +51,14 @@ export type CurrentUser = {
   role: UserRole;
   buyerProfileId: string | null;
   agentProfileId: string | null;
+  // Campos del AgentProfile que getCurrentUser() ya trae en la misma
+  // consulta de sesión (ver el `include` abajo) — se exponen aquí para que
+  // las páginas de agente no tengan que volver a pedir el mismo registro
+  // por id. `null` cuando no hay agentProfile (comprador/admin, o un rol
+  // AGENT sin perfil todavía) — nunca un valor inventado.
+  agentCreditsBalance: number | null;
+  agentWorkAreas: string[] | null;
+  agentPropertyTypes: PropertyType[] | null;
 };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -75,6 +83,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     role: user.role,
     buyerProfileId: user.buyerProfile?.id ?? null,
     agentProfileId: user.agentProfile?.id ?? null,
+    agentCreditsBalance: user.agentProfile?.creditsBalance ?? null,
+    agentWorkAreas: user.agentProfile?.workAreas ?? null,
+    agentPropertyTypes: user.agentProfile?.propertyTypes ?? null,
   };
 }
 

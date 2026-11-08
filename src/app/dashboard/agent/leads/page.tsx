@@ -1,6 +1,5 @@
 import { requireAgent } from "@/lib/auth";
-import { getAvailableRequestsForAgent, type LeadSort } from "@/lib/services/leads";
-import { getCreditsBalance } from "@/lib/services/agentProfile";
+import { getAvailableRequestsForAgent, type AgentMatchProfile, type LeadSort } from "@/lib/services/leads";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { LeadCard } from "@/components/LeadCard";
 import { Card } from "@/components/ui/Card";
@@ -31,17 +30,30 @@ export default async function AgentLeadsPage({
   };
   const sort = (sp.sort as LeadSort) || "recientes";
 
-  const [requests, creditsBalance] = await Promise.all([
-    getAvailableRequestsForAgent(user.agentProfileId!, filters, sort),
-    getCreditsBalance(user.agentProfileId!),
-  ]);
+  // Viene de la sesión (requireAgent() arriba) — no se vuelve a pedir el
+  // AgentProfile por id.
+  const agentMatchProfile: AgentMatchProfile =
+    user.agentWorkAreas != null && user.agentPropertyTypes != null && user.agentCreditsBalance != null
+      ? {
+          workAreas: user.agentWorkAreas,
+          propertyTypes: user.agentPropertyTypes,
+          creditsBalance: user.agentCreditsBalance,
+        }
+      : null;
+
+  const requests = await getAvailableRequestsForAgent(
+    user.agentProfileId!,
+    agentMatchProfile,
+    filters,
+    sort,
+  );
 
   return (
     <>
       <DashboardHeader
         userName={user.name}
         links={AGENT_NAV_LINKS}
-        creditsBalance={creditsBalance}
+        creditsBalance={user.agentCreditsBalance ?? undefined}
       />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">
