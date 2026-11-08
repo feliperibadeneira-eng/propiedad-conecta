@@ -1,36 +1,53 @@
 import { notFound } from "next/navigation";
-import { ImageOff } from "lucide-react";
 import { requireBuyer } from "@/lib/auth";
 import { getBuyerRequestDetail } from "@/lib/services/requests";
-import { listMessagesForBuyer, ConversationError } from "@/lib/services/conversation";
-import { BRAND_NAME } from "@/lib/brand";
+import {
+  listMessagesForBuyer,
+  getUnreadCountsByLeadPurchaseForBuyer,
+  ConversationError,
+} from "@/lib/services/conversation";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
 import { inputBase } from "@/components/ui/Field";
 import { formatUSD, formatDate } from "@/lib/format";
-import { propertyPhotoUrl } from "@/lib/propertyPhotos";
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
   REQUEST_STATUS_LABELS,
-  LEAD_PURCHASE_STATUS_LABELS,
-  PROPERTY_STATUS_LABELS,
-  BUYER_OUTCOME_OPTIONS,
 } from "@/lib/enums";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
 import {
   updateMaxAgentsAction,
   pauseRequestAction,
   resumeRequestAction,
   closeRequestAction,
-  markOutcomeAction,
 } from "./actions";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
-import { ConversationPanel } from "./ConversationPanel";
+import { AgentConnectionsList, type AgentConnectionViewModel } from "./AgentConnectionsList";
+import type { LeadPurchaseStatus } from "@/generated/prisma/enums";
 
 export const dynamic = "force-dynamic";
+
+// Rediseño "Mis solicitudes" — tono semántico por estado de la conexión con
+// el agente, en vez del neutral plano de antes. Mismos 10 valores de
+// LeadPurchaseStatus que ya existían, ningún estado nuevo.
+const LEAD_PURCHASE_STATUS_TONE: Record<
+  LeadPurchaseStatus,
+  "accent" | "success" | "warning" | "neutral"
+> = {
+  PURCHASED: "accent",
+  CONTACTED: "accent",
+  RESPONDED: "success",
+  APPOINTMENT_SCHEDULED: "success",
+  REACTIVATED: "accent",
+  NO_CONTACT: "warning",
+  REFUND_REQUESTED: "warning",
+  NO_MATCH: "neutral",
+  RELEASED: "neutral",
+  REFUNDED: "neutral",
+  CLOSED: "neutral",
+};
 
 export default async function BuyerRequestDetailPage({
   params,
@@ -58,23 +75,80 @@ export default async function BuyerRequestDetailPage({
     string,
     Awaited<ReturnType<typeof listMessagesForBuyer>>["messages"] | null
   >();
-  await Promise.all(
-    request.purchases.map(async (p) => {
-      try {
-        const page = await listMessagesForBuyer(user.buyerProfileId!, p.id);
-        messagesByPurchase.set(p.id, page.messages);
-      } catch (e) {
-        if (!(e instanceof ConversationError)) throw e;
-        messagesByPurchase.set(p.id, null);
-      }
-    }),
-  );
+  const [, unreadByLeadPurchase] = await Promise.all([
+    Promise.all(
+      request.purchases.map(async (p) => {
+        try {
+          const page = await listMessagesForBuyer(user.buyerProfileId!, p.id);
+          messagesByPurchase.set(p.id, page.messages);
+        } catch (e) {
+          if (!(e instanceof ConversationError)) throw e;
+          messagesByPurchase.set(p.id, null);
+        }
+      }),
+    ),
+    getUnreadCountsByLeadPurchaseForBuyer(user.buyerProfileId!, user.id),
+  ]);
+
+  // Fase 1.1: ya calculamos unreadByLeadPurchase arriba para los badges por
+  // agente conectado — su suma es el mismo total que el header pediría por
+  // su cuenta, así que se lo pasamos para que no repita esa consulta al
+  // montar.
+  const totalUnread = Array.from(unreadByLeadPurchase.values()).reduce((a, b) => a + b, 0);
+
+  // Vista-modelo plana para AgentConnectionsList (componente cliente): los
+  // Decimal de Prisma (price) no cruzan el límite server->client tal cual,
+  // se convierten a string acá. purchases ya viene ordenado por
+  // purchasedAt desc (getBuyerRequestDetail), así que el primero es el más
+  // reciente.
+  const connections: AgentConnectionViewModel[] = request.purchases.map((p) => {
+    const messages = messagesByPurchase.get(p.id) ?? null;
+    const unreadCount = unreadByLeadPurchase.get(p.id) ?? 0;
+    const lastActivityAt = messages && messages.length > 0 ? messages[0].createdAt : p.purchasedAt;
+    return {
+      id: p.id,
+      status: p.status,
+      statusTone: LEAD_PURCHASE_STATUS_TONE[p.status],
+      agentName: p.agent.user.name,
+      agentCompany: p.agent.company,
+      agentWhatsapp: p.agent.whatsapp,
+      agentPhone: p.agent.user.phone,
+      agentEmail: p.agent.user.email,
+      unreadCount,
+      lastActivityAt,
+      initialMessages: messages,
+      propertyShares: p.propertyShares.map((share) => ({
+        id: share.id,
+        property: share.property
+          ? {
+              id: share.property.id,
+              title: share.property.title,
+              price: share.property.price.toString(),
+              status: share.property.status,
+              provincia: share.property.provincia,
+              ciudad: share.property.ciudad,
+              sector: share.property.sector,
+              imageId: share.property.images[0]?.id ?? null,
+            }
+          : null,
+      })),
+    };
+  });
+
+  // Apertura automática (fase de rediseño): la conexión con más no leídos;
+  // si ninguna tiene pendientes, la más reciente (primera del arreglo, ya
+  // ordenado desc por purchasedAt).
+  const defaultOpenId =
+    connections.length === 0
+      ? null
+      : connections.reduce((best, c) => (c.unreadCount > best.unreadCount ? c : best), connections[0]).id;
 
   return (
     <>
       <DashboardHeader
         userName={user.name}
         links={[{ href: "/dashboard/buyer", label: "Mis solicitudes" }]}
+        initialUnreadCount={totalUnread}
       />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         {created === "1" && (
@@ -108,41 +182,6 @@ export default async function BuyerRequestDetailPage({
           )}
         </Card>
 
-        <Card className="mt-5 space-y-4 p-6">
-          <h2 className="font-semibold">Configuración</h2>
-          <form action={updateMaxAgentsAction.bind(null, request.id)} className="flex items-center gap-3">
-            <span className="text-sm text-muted">Máximo de agentes:</span>
-            <select name="maxAgents" defaultValue={request.maxAgents} className={`${inputBase} w-auto`}>
-              {[1, 3, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className={buttonClasses("secondary", "sm")}>
-              Guardar
-            </button>
-          </form>
-          <div className="flex flex-wrap gap-2">
-            {request.status === "PAUSADA" ? (
-              <form action={resumeRequestAction.bind(null, request.id)}>
-                <Button size="sm" variant="secondary">Reanudar búsqueda</Button>
-              </form>
-            ) : (
-              request.status !== "CERRADA" && (
-                <form action={pauseRequestAction.bind(null, request.id)}>
-                  <Button size="sm" variant="secondary">Pausar</Button>
-                </form>
-              )
-            )}
-            {request.status !== "CERRADA" && (
-              <form action={closeRequestAction.bind(null, request.id)}>
-                <Button size="sm" variant="danger">Ya encontré una propiedad / cerrar</Button>
-              </form>
-            )}
-          </div>
-        </Card>
-
         <h2 className="mt-8 font-semibold">
           Agentes conectados ({activePurchases.length}/{request.maxAgents})
         </h2>
@@ -151,121 +190,58 @@ export default async function BuyerRequestDetailPage({
             Todavía ningún agente desbloqueó tu solicitud.
           </Card>
         ) : (
-          <div className="mt-3 space-y-3">
-            {request.purchases.map((p) => (
-              <Card key={p.id} className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{p.agent.user.name}</p>
-                    {p.agent.company && (
-                      <p className="text-sm text-muted">{p.agent.company}</p>
-                    )}
-                  </div>
-                  <Badge tone="neutral">{LEAD_PURCHASE_STATUS_LABELS[p.status]}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                  <a
-                    href={buildWhatsAppLink(
-                      p.agent.whatsapp || p.agent.user.phone || "",
-                      `Hola ${p.agent.user.name}, te contacto por ${BRAND_NAME}.`,
-                    )}
-                    target="_blank"
-                    className={buttonClasses("accent2", "sm")}
-                  >
-                    WhatsApp
-                  </a>
-                  <a href={`tel:${p.agent.user.phone}`} className={buttonClasses("secondary", "sm")}>
-                    Llamar
-                  </a>
-                  {p.agent.user.email && (
-                    <a href={`mailto:${p.agent.user.email}`} className={buttonClasses("secondary", "sm")}>
-                      Email
-                    </a>
-                  )}
-                </div>
-                {p.propertyShares.length > 0 && (
-                  <div className="mt-4 border-t border-border pt-4">
-                    <p className="text-sm font-medium">Propiedades que te compartió</p>
-                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                      {p.propertyShares.map((share) => (
-                        <div
-                          key={share.id}
-                          className="flex gap-3 border border-border p-3"
-                        >
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden bg-surface-hover">
-                            {share.property?.images[0] ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={propertyPhotoUrl(share.property.images[0].id)}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <ImageOff className="text-muted-2" size={18} />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            {share.property ? (
-                              <>
-                                <div className="flex items-center gap-2">
-                                  <p className="truncate text-sm font-medium">
-                                    {share.property.title}
-                                  </p>
-                                  {share.property.status !== "DISPONIBLE" && (
-                                    <Badge tone="neutral">
-                                      {PROPERTY_STATUS_LABELS[share.property.status]}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted">
-                                  {formatUSD(share.property.price)}
-                                </p>
-                                <p className="truncate text-xs text-muted-2">
-                                  {[share.property.provincia, share.property.ciudad, share.property.sector]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </p>
-                              </>
-                            ) : (
-                              <p className="text-sm text-muted-2">
-                                Esta propiedad ya no está disponible.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <ConversationPanel
-                  leadPurchaseId={p.id}
-                  currentUserId={user.id}
-                  initialMessages={messagesByPurchase.get(p.id) ?? null}
-                />
+          <AgentConnectionsList
+            requestId={request.id}
+            currentUserId={user.id}
+            connections={connections}
+            defaultOpenId={defaultOpenId}
+          />
+        )}
 
-                {OCCUPYING_STATUSES.includes(p.status) && (
-                  <form
-                    action={markOutcomeAction.bind(null, request.id)}
-                    className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4"
-                  >
-                    <input type="hidden" name="leadPurchaseId" value={p.id} />
-                    <span className="text-sm text-muted">¿Qué ocurrió?</span>
-                    <select name="outcome" className={`${inputBase} w-auto`}>
-                      {BUYER_OUTCOME_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
+        <details className="mt-8 border border-border bg-surface shadow-sm">
+          <summary className="cursor-pointer select-none p-6 font-semibold">
+            Ajustes de la solicitud
+          </summary>
+          <div className="space-y-4 border-t border-border p-6">
+            <form action={updateMaxAgentsAction.bind(null, request.id)} className="flex items-center gap-3">
+              <span className="text-sm text-muted">Máximo de agentes:</span>
+              <select name="maxAgents" defaultValue={request.maxAgents} className={`${inputBase} w-auto`}>
+                {[1, 3, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className={buttonClasses("secondary", "sm")}>
+                Guardar
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-2">
+              {request.status === "PAUSADA" ? (
+                <form action={resumeRequestAction.bind(null, request.id)}>
+                  <button type="submit" className={buttonClasses("secondary", "sm")}>
+                    Reanudar búsqueda
+                  </button>
+                </form>
+              ) : (
+                request.status !== "CERRADA" && (
+                  <form action={pauseRequestAction.bind(null, request.id)}>
                     <button type="submit" className={buttonClasses("secondary", "sm")}>
-                      Confirmar
+                      Pausar
                     </button>
                   </form>
-                )}
-              </Card>
-            ))}
+                )
+              )}
+              {request.status !== "CERRADA" && (
+                <form action={closeRequestAction.bind(null, request.id)}>
+                  <button type="submit" className={buttonClasses("danger", "sm")}>
+                    Ya encontré una propiedad / cerrar
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
-        )}
+        </details>
       </main>
     </>
   );
