@@ -585,6 +585,11 @@ model ConversationMessage {
   body            String?
   propertyShareId String?
   createdAt       DateTime                @default(now())
+  // Fase 1 de chat en tiempo real: sin ambigüedad de "leído por quién"
+  // porque cada Conversation tiene exactamente 2 participantes (el agente y
+  // el comprador del LeadPurchase ancla) — un mensaje nunca necesita más de
+  // una marca de lectura. Null = no leído todavía por el destinatario.
+  readAt          DateTime?
 
   conversation  Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender        User           @relation(fields: [senderUserId], references: [id])
@@ -592,6 +597,10 @@ model ConversationMessage {
 
   @@index([conversationId, createdAt])
   @@index([propertyShareId])
+  // Soporta los conteos de "no leídos" (por conversación y globales del
+  // header) sin recorrer todos los mensajes — el filtro más selectivo es
+  // readAt IS NULL (la minoría de las filas).
+  @@index([readAt])
 }
 
 // Historial de cambios de estado, tanto de la solicitud como de una compra

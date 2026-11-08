@@ -14,9 +14,11 @@ import {
   sendTextMessageAsAgent,
   sendPropertyShareMessage,
   listMessagesForAgent,
+  pollMessagesForAgent,
   ConversationError,
   type MessageCursor,
 } from "@/lib/services/conversation";
+import { pollLeadPurchaseIdSchema, pollCursorSchema } from "@/lib/validators/conversation";
 
 export async function markContactedAction(leadPurchaseId: string) {
   const user = await requireAgent();
@@ -113,4 +115,18 @@ export async function listConversationMessagesAction(
 ) {
   const user = await requireAgent();
   return listMessagesForAgent(user.agentProfileId!, leadPurchaseId, { cursor, limit });
+}
+
+// Polling (fase 1 de tiempo real): ver el comentario equivalente en
+// dashboard/buyer/solicitudes/[id]/actions.ts — mismo contrato, otro rol.
+//
+// Validación (fase 1.1): rechaza una forma inválida de leadPurchaseId/after
+// ANTES de tocar la base de datos. No reemplaza la autorización real —
+// pollMessagesForAgent sigue resolviendo la conversación exclusivamente vía
+// getConversationForAgent, filtrado por el agentProfileId de la sesión.
+export async function pollConversationAction(leadPurchaseId: string, after: MessageCursor | null) {
+  const user = await requireAgent();
+  const parsedLeadPurchaseId = pollLeadPurchaseIdSchema.parse(leadPurchaseId);
+  const parsedAfter = pollCursorSchema.parse(after);
+  return pollMessagesForAgent(user.agentProfileId!, user.id, parsedLeadPurchaseId, parsedAfter);
 }

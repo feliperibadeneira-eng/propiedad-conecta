@@ -11,9 +11,11 @@ import { buyerOutcomeSchema } from "@/lib/validators/profile";
 import {
   sendTextMessageAsBuyer,
   listMessagesForBuyer,
+  pollMessagesForBuyer,
   ConversationError,
   type MessageCursor,
 } from "@/lib/services/conversation";
+import { pollLeadPurchaseIdSchema, pollCursorSchema } from "@/lib/validators/conversation";
 
 export async function updateMaxAgentsAction(requestId: string, formData: FormData) {
   const user = await requireBuyer();
@@ -93,4 +95,21 @@ export async function listConversationMessagesAction(
 ) {
   const user = await requireBuyer();
   return listMessagesForBuyer(user.buyerProfileId!, leadPurchaseId, { cursor, limit });
+}
+
+// Polling (fase 1 de tiempo real): trae solo lo nuevo desde `after` y marca
+// como leído, en un solo viaje al servidor. `after` null solo pasa en el
+// primer tick si el panel no tenía ningún mensaje cargado todavía — en ese
+// caso no hay "nuevos" que buscar (listMessagesForBuyer ya trajo el estado
+// inicial), pero igual marca leído lo que hubiera.
+//
+// Validación (fase 1.1): rechaza una forma inválida de leadPurchaseId/after
+// ANTES de tocar la base de datos. No reemplaza la autorización real —
+// pollMessagesForBuyer sigue resolviendo la conversación exclusivamente vía
+// getConversationForBuyer, filtrado por el buyerProfileId de la sesión.
+export async function pollConversationAction(leadPurchaseId: string, after: MessageCursor | null) {
+  const user = await requireBuyer();
+  const parsedLeadPurchaseId = pollLeadPurchaseIdSchema.parse(leadPurchaseId);
+  const parsedAfter = pollCursorSchema.parse(after);
+  return pollMessagesForBuyer(user.buyerProfileId!, user.id, parsedLeadPurchaseId, parsedAfter);
 }

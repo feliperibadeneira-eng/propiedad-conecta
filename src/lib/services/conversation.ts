@@ -141,6 +141,192 @@ export async function listMessagesForBuyer(
   return listMessagesPage(conversation.id, options);
 }
 
+// ---------- Tiempo real: Fase 1 (polling) ----------
+//
+// Fetch incremental para el polling del panel abierto: "todo lo que llegó
+// después de lo que ya tengo", ascendente, listo para anexar al final del
+// historial sin dar vuelta nada — a diferencia de listMessagesPage (que
+// pagina hacia atrás, descendente, para "cargar anteriores"). Mismo índice
+// ConversationMessage(conversationId, createdAt), ninguno nuevo.
+const POLL_MAX_MESSAGES = 50;
+
+async function listMessagesAfter(conversationId: string, after: MessageCursor | null) {
+  if (!after) return [];
+  return prisma.conversationMessage.findMany({
+    where: {
+      conversationId,
+      OR: [
+        { createdAt: { gt: after.createdAt } },
+        { createdAt: after.createdAt, id: { gt: after.id } },
+      ],
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: POLL_MAX_MESSAGES,
+    include: {
+      sender: { select: SENDER_SELECT },
+      propertyShare: { include: { property: { select: SHARED_PROPERTY_SELECT } } },
+    },
+  });
+}
+
+// Marca como leído todo lo que el OTRO participante envió y sigue sin leer
+// — nunca los mensajes propios (excluidos por senderUserId != viewerUserId).
+// Se llama tanto al abrir la conversación como en cada tick de polling
+// mientras sigue abierta; es idempotente (where: readAt: null), así que
+// llamarla sin nada nuevo que marcar es barato.
+async function markConversationRead(conversationId: string, viewerUserId: string) {
+  const { count } = await prisma.conversationMessage.updateMany({
+    where: { conversationId, senderUserId: { not: viewerUserId }, readAt: null },
+    data: { readAt: new Date() },
+  });
+  return count;
+}
+
+export type PollResult = {
+  messages: Awaited<ReturnType<typeof listMessagesAfter>>;
+  markedReadCount: number;
+};
+
+export async function pollMessagesForAgent(
+  agentProfileId: string,
+  agentUserId: string,
+  leadPurchaseId: string,
+  after: MessageCursor | null,
+): Promise<PollResult> {
+  const conversation = await getConversationForAgent(agentProfileId, leadPurchaseId);
+  const [messages, markedReadCount] = await Promise.all([
+    listMessagesAfter(conversation.id, after),
+    markConversationRead(conversation.id, agentUserId),
+  ]);
+  return { messages, markedReadCount };
+}
+
+export async function pollMessagesForBuyer(
+  buyerProfileId: string,
+  buyerUserId: string,
+  leadPurchaseId: string,
+  after: MessageCursor | null,
+): Promise<PollResult> {
+  const conversation = await getConversationForBuyer(buyerProfileId, leadPurchaseId);
+  const [messages, markedReadCount] = await Promise.all([
+    listMessagesAfter(conversation.id, after),
+    markConversationRead(conversation.id, buyerUserId),
+  ]);
+  return { messages, markedReadCount };
+}
+
+// ---------- Contadores de no leídos ----------
+//
+// Cuentan filas, nunca cargan los mensajes completos (requisito de
+// rendimiento de la fase 1). Usan el índice ConversationMessage(readAt)
+// agregado en esta misma fase.
+
+// Fase 1.1 — corte de mensajes históricos para badges/contadores.
+//
+// La columna readAt se agregó con ALTER TABLE ... ADD COLUMN, así que todo
+// mensaje preexistente a la migración quedó en NULL ("no leído" según la
+// semántica actual) sin que nadie lo haya dejado realmente sin leer. En vez
+// de un UPDATE masivo sobre ConversationMessage (reescribiría historial real
+// y violaría "no marcar automáticamente mensajes históricos como leídos"),
+// se usa un corte de fecha: solo cuenta como "no leído" lo que además sea
+// posterior a este instante.
+//
+// Alcance deliberadamente acotado: SOLO se usa acá y en
+// getUnreadCountsByLeadPurchaseForAgent/Buyer (conteos/badges). NO se toca
+// markConversationRead, listMessagesAfter ni listMessagesPage — el chat
+// (historial completo, polling, marcado de lectura real) funciona exacto
+// igual que antes; un mensaje histórico genuinamente sin leer se marca
+// leído de forma normal (markConversationRead ya es idempotente) la primera
+// vez que su destinatario reabre esa conversación — este corte solo evita
+// que aparezca como pendiente en un badge ANTES de que eso pase.
+//
+// IMPORTANTE — actualizar antes de cada despliegue a un entorno nuevo
+// (producción incluida): debe ser el instante UTC en que la migración que
+// agrega readAt se aplica ahí. Un valor desactualizado (muy en el pasado)
+// vuelve a mostrar mensajes históricos reales como no leídos; uno muy en el
+// futuro ocultaría mensajes genuinamente nuevos del badge. Esta fase solo
+// lo fijó para el sandbox local (ver informe de la fase 1.1).
+export const UNREAD_TRACKING_SINCE = new Date("2026-10-30T19:31:19.000Z");
+
+export async function countUnreadMessagesForAgent(agentProfileId: string, agentUserId: string) {
+  return prisma.conversationMessage.count({
+    where: {
+      readAt: null,
+      createdAt: { gte: UNREAD_TRACKING_SINCE },
+      senderUserId: { not: agentUserId },
+      conversation: { leadPurchase: { agentId: agentProfileId } },
+    },
+  });
+}
+
+export async function countUnreadMessagesForBuyer(buyerProfileId: string, buyerUserId: string) {
+  return prisma.conversationMessage.count({
+    where: {
+      readAt: null,
+      createdAt: { gte: UNREAD_TRACKING_SINCE },
+      senderUserId: { not: buyerUserId },
+      conversation: { leadPurchase: { request: { buyerId: buyerProfileId } } },
+    },
+  });
+}
+
+// Para las listas (Mis leads / Agentes conectados): un conteo por fila,
+// calculado una sola vez en el servidor por carga de página — no es
+// polling por fila, ver auditoría/plan de la fase 1. Dos consultas chicas
+// (agrupar, y resolver conversationId -> leadPurchaseId solo para las
+// conversaciones que sí tienen algo sin leer), nunca una por fila.
+
+export async function getUnreadCountsByLeadPurchaseForAgent(
+  agentProfileId: string,
+  agentUserId: string,
+): Promise<Map<string, number>> {
+  const grouped = await prisma.conversationMessage.groupBy({
+    by: ["conversationId"],
+    where: {
+      readAt: null,
+      createdAt: { gte: UNREAD_TRACKING_SINCE },
+      senderUserId: { not: agentUserId },
+      conversation: { leadPurchase: { agentId: agentProfileId } },
+    },
+    _count: { _all: true },
+  });
+  return mapGroupedCountsToLeadPurchaseId(grouped);
+}
+
+export async function getUnreadCountsByLeadPurchaseForBuyer(
+  buyerProfileId: string,
+  buyerUserId: string,
+): Promise<Map<string, number>> {
+  const grouped = await prisma.conversationMessage.groupBy({
+    by: ["conversationId"],
+    where: {
+      readAt: null,
+      createdAt: { gte: UNREAD_TRACKING_SINCE },
+      senderUserId: { not: buyerUserId },
+      conversation: { leadPurchase: { request: { buyerId: buyerProfileId } } },
+    },
+    _count: { _all: true },
+  });
+  return mapGroupedCountsToLeadPurchaseId(grouped);
+}
+
+async function mapGroupedCountsToLeadPurchaseId(
+  grouped: { conversationId: string; _count: { _all: number } }[],
+): Promise<Map<string, number>> {
+  if (grouped.length === 0) return new Map();
+  const conversations = await prisma.conversation.findMany({
+    where: { id: { in: grouped.map((g) => g.conversationId) } },
+    select: { id: true, leadPurchaseId: true },
+  });
+  const leadPurchaseIdByConversationId = new Map(conversations.map((c) => [c.id, c.leadPurchaseId]));
+  const result = new Map<string, number>();
+  for (const g of grouped) {
+    const leadPurchaseId = leadPurchaseIdByConversationId.get(g.conversationId);
+    if (leadPurchaseId) result.set(leadPurchaseId, g._count._all);
+  }
+  return result;
+}
+
 // ---------- Enviar mensajes ----------
 
 export async function sendTextMessageAsAgent(params: {

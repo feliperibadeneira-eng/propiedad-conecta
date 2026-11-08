@@ -4,8 +4,10 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import {
   sendConversationTextMessageAction,
   listConversationMessagesAction,
+  pollConversationAction,
   type SendConversationMessageState,
 } from "./actions";
+import { useConversationPolling } from "@/hooks/useConversationPolling";
 import { Button } from "@/components/ui/Button";
 import { inputBase } from "@/components/ui/Field";
 import { formatRelativeTime } from "@/lib/format";
@@ -24,26 +26,75 @@ export function ConversationPanel({
   currentUserId: string;
   initialMessages: ConversationMessage[] | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ConversationMessage[]>(initialMessages ?? []);
+  // Fase 1 (mayor visibilidad): abierto por defecto en vez de detrás de
+  // "Ver conversación" — igual que ya era el chat del agente.
+  const [open, setOpen] = useState(true);
+  // initialMessages llega en orden descendente (más reciente primero, igual
+  // que listMessagesPage); acá se guarda en orden ascendente desde el
+  // principio para que el polling solo tenga que anexar al final.
+  const [messages, setMessages] = useState<ConversationMessage[]>(
+    initialMessages ? [...initialMessages].reverse() : [],
+  );
   const [state, formAction, pending] = useActionState(
     sendConversationTextMessageAction.bind(null, leadPurchaseId),
     initialState,
   );
   const wasPending = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [, startRefresh] = useTransition();
+
+  // Fase 1.1: un comprador puede tener hasta 5 conversaciones abiertas a la
+  // vez en esta página (una por agente conectado, todas abiertas por
+  // defecto) — sin esto, cada una pollea cada 4.5s aunque esté fuera de
+  // pantalla. Empieza en true (igual que "abierto por defecto") para no
+  // perder el primer tick mientras el observer todavía no reportó nada;
+  // se corrige solo apenas corre el primer callback, montado o no.
+  const [isVisible, setIsVisible] = useState(true);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (wasPending.current && !pending && !state.error) {
       formRef.current?.reset();
       startRefresh(async () => {
         const page = await listConversationMessagesAction(leadPurchaseId);
-        setMessages(page.messages);
+        setMessages([...page.messages].reverse());
       });
     }
     wasPending.current = pending;
   }, [pending, state, leadPurchaseId]);
+
+  // Polling (fase 1 de tiempo real): trae solo lo nuevo desde el último
+  // mensaje que ya tenemos y lo anexa, sin reemplazar el historial. Marca
+  // como leído en el mismo viaje al servidor (ver pollConversationAction).
+  useConversationPolling({
+    enabled: open && initialMessages !== null && isVisible,
+    poll: async () => {
+      const last = messages[messages.length - 1];
+      const after = last ? { createdAt: last.createdAt, id: last.id } : null;
+      const result = await pollConversationAction(leadPurchaseId, after);
+      if (result.messages.length === 0) return;
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const fresh = result.messages.filter((m) => !existingIds.has(m.id));
+        if (fresh.length === 0) return prev;
+        return [...prev, ...fresh];
+      });
+    },
+  });
+
+  // Auto-scroll al último mensaje — así los mensajes nuevos son fáciles de
+  // ubicar sin tener que buscarlos manualmente.
+  useEffect(() => {
+    if (open) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages.length, open]);
 
   if (initialMessages === null) {
     return (
@@ -56,10 +107,8 @@ export function ConversationPanel({
     );
   }
 
-  const ordered = [...messages].reverse();
-
   return (
-    <div className="mt-4 border-t border-border pt-4">
+    <div ref={containerRef} className="mt-4 border-t border-border pt-4">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -73,13 +122,13 @@ export function ConversationPanel({
 
       {open && (
         <div className="mt-3">
-          <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
-            {ordered.length === 0 ? (
+          <div ref={listRef} className="flex max-h-96 flex-col gap-3 overflow-y-auto">
+            {messages.length === 0 ? (
               <p className="text-sm text-muted-2">
                 Todavía no hay mensajes. Envía el primero para iniciar la conversación.
               </p>
             ) : (
-              ordered.map((m) => {
+              messages.map((m) => {
                 const isOwn = m.senderUserId === currentUserId;
                 return (
                   <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>

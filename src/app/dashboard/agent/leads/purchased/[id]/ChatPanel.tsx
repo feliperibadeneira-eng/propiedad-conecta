@@ -4,8 +4,10 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import {
   sendConversationTextMessageAction,
   listConversationMessagesAction,
+  pollConversationAction,
   type SendConversationMessageState,
 } from "../actions";
+import { useConversationPolling } from "@/hooks/useConversationPolling";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { inputBase } from "@/components/ui/Field";
@@ -25,13 +27,18 @@ export function ChatPanel({
   currentUserId: string;
   initialMessages: ConversationMessage[] | null;
 }) {
-  const [messages, setMessages] = useState<ConversationMessage[]>(initialMessages ?? []);
+  // initialMessages llega en orden descendente (igual que listMessagesPage);
+  // se guarda ascendente desde el principio para que el polling solo anexe.
+  const [messages, setMessages] = useState<ConversationMessage[]>(
+    initialMessages ? [...initialMessages].reverse() : [],
+  );
   const [state, formAction, pending] = useActionState(
     sendConversationTextMessageAction.bind(null, leadPurchaseId),
     initialState,
   );
   const wasPending = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [, startRefresh] = useTransition();
 
   useEffect(() => {
@@ -39,11 +46,34 @@ export function ChatPanel({
       formRef.current?.reset();
       startRefresh(async () => {
         const page = await listConversationMessagesAction(leadPurchaseId);
-        setMessages(page.messages);
+        setMessages([...page.messages].reverse());
       });
     }
     wasPending.current = pending;
   }, [pending, state, leadPurchaseId]);
+
+  // Polling (fase 1 de tiempo real): este panel siempre está expandido
+  // (ver auditoría), así que el polling corre mientras la página esté
+  // montada y la pestaña visible. Marca como leído en el mismo viaje.
+  useConversationPolling({
+    enabled: initialMessages !== null,
+    poll: async () => {
+      const last = messages[messages.length - 1];
+      const after = last ? { createdAt: last.createdAt, id: last.id } : null;
+      const result = await pollConversationAction(leadPurchaseId, after);
+      if (result.messages.length === 0) return;
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const fresh = result.messages.filter((m) => !existingIds.has(m.id));
+        if (fresh.length === 0) return prev;
+        return [...prev, ...fresh];
+      });
+    },
+  });
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages.length]);
 
   if (initialMessages === null) {
     return (
@@ -56,19 +86,17 @@ export function ChatPanel({
     );
   }
 
-  const ordered = [...messages].reverse();
-
   return (
     <Card className="mt-6 p-6">
       <h2 className="font-semibold">Chat</h2>
 
-      <div className="mt-4 flex max-h-96 flex-col gap-3 overflow-y-auto">
-        {ordered.length === 0 ? (
+      <div ref={listRef} className="mt-4 flex max-h-96 flex-col gap-3 overflow-y-auto">
+        {messages.length === 0 ? (
           <p className="text-sm text-muted-2">
             Todavía no hay mensajes. Envía el primero para iniciar la conversación.
           </p>
         ) : (
-          ordered.map((m) => {
+          messages.map((m) => {
             const isOwn = m.senderUserId === currentUserId;
             return (
               <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
