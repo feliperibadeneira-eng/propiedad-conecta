@@ -42,23 +42,7 @@ export function ConversationPanel({
   const wasPending = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [, startRefresh] = useTransition();
-
-  // Fase 1.1: un comprador puede tener hasta 5 conversaciones abiertas a la
-  // vez en esta página (una por agente conectado, todas abiertas por
-  // defecto) — sin esto, cada una pollea cada 4.5s aunque esté fuera de
-  // pantalla. Empieza en true (igual que "abierto por defecto") para no
-  // perder el primer tick mientras el observer todavía no reportó nada;
-  // se corrige solo apenas corre el primer callback, montado o no.
-  const [isVisible, setIsVisible] = useState(true);
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (wasPending.current && !pending && !state.error) {
@@ -74,8 +58,19 @@ export function ConversationPanel({
   // Polling (fase 1 de tiempo real): trae solo lo nuevo desde el último
   // mensaje que ya tenemos y lo anexa, sin reemplazar el historial. Marca
   // como leído en el mismo viaje al servidor (ver pollConversationAction).
+  //
+  // Cuántas conversaciones del comprador pollean a la vez lo decide el
+  // acordeón de AgentConnectionsList.tsx: mantiene como mucho una fila
+  // abierta a la vez (un solo `openId`) y desmonta por completo las demás
+  // — así que como mucho un ConversationPanel existe en el árbol de React
+  // en cualquier momento, sin que este componente necesite ningún control
+  // adicional. (Antes había acá un IntersectionObserver con el mismo fin;
+  // se sacó porque en producción el polling del comprador se detenía solo,
+  // de forma permanente, sin que la pestaña estuviera oculta — el observer
+  // es la hipótesis principal de esa causa, no algo confirmado línea por
+  // línea.)
   useConversationPolling({
-    enabled: open && initialMessages !== null && isVisible,
+    enabled: open && initialMessages !== null,
     poll: async () => {
       const last = messages[messages.length - 1];
       const after = last ? { createdAt: last.createdAt, id: last.id } : null;
@@ -108,7 +103,7 @@ export function ConversationPanel({
   }
 
   return (
-    <div ref={containerRef} className="mt-4 border-t border-border pt-4">
+    <div className="mt-4 border-t border-border pt-4">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
