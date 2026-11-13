@@ -58,6 +58,15 @@ export function useConversationPolling(options: {
     let initialDecisionMade = false;
 
     async function tick() {
+      // Limpiar acá, antes que cualquier return temprano: así timeoutId
+      // refleja fielmente "¿hay un tick ya agendado?" incluso cuando este
+      // tick se disparó estando la pestaña oculta y no reprograma el
+      // siguiente. Sin esto, timeoutId se queda con el id (ya consumido,
+      // pero igual "verdadero" en JS) del timer que acaba de correr, y
+      // handleVisibilityChange cree que ya hay uno pendiente — por lo que
+      // nunca llama a tick() al volver a estar visible, y el polling queda
+      // detenido para siempre sin ningún error.
+      timeoutId = undefined;
       if (cancelled || document.hidden) return;
       try {
         await pollRef.current();
