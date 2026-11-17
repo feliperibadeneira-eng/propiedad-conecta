@@ -5,7 +5,7 @@ import { getPurchasedLeadsForAgent } from "@/lib/services/leads";
 import { getAgentLeadDashboard } from "@/lib/services/agentProfile";
 import { getUnreadCountsByLeadPurchaseForAgent } from "@/lib/services/conversation";
 import { getRefundEligibleHours } from "@/lib/settings";
-import { isEligibleForRefundRequest } from "@/lib/services/purchase";
+import { isEligibleForRefundCategory } from "@/lib/services/purchase";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -120,7 +120,8 @@ export default async function PurchasedLeadsPage({
           <div className="mt-6 space-y-3">
             {filtered.map((p) => {
               const active = OCCUPYING_STATUSES.includes(p.status);
-              const canRequestRefund = isEligibleForRefundRequest(
+              const canRequestRefund = isEligibleForRefundCategory(
+                "NO_RESPONSE",
                 p,
                 refundEligibleHours,
               );

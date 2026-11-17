@@ -13,12 +13,30 @@ import {
   PurchaseError,
   computeContactProtectionDeadline,
   isContactAccessible,
+  releaseLead,
+  markAgentContacted,
+  markAppointmentScheduled,
+  markBuyerOutcome,
+  reactivateLeadPurchase,
+  revealOwnContact,
+  requestContactRelease,
+  approveContactReleaseRequest,
+  rejectContactReleaseRequest,
+  cancelContactReleaseRequest,
+  getRevealedContactMethods,
+  requestRefund,
+  approveRefund,
+  rejectRefund,
+  isEligibleForRefundCategory,
 } from "./purchase";
 import { getPurchasedLeadDetail } from "./leads";
 import { getUnlockCost } from "./credits";
 import { createProperty } from "./properties";
 import { createRequestSchema } from "../validators/request";
+import { requestRefundSchema, decisionReasonSchema } from "../validators/refund";
 import { getContactProtectionHours } from "../settings";
+import { recordStatusChange } from "./requests";
+import { logAudit } from "./audit";
 
 const RUN_ID = Date.now().toString(36);
 const createdUserIds: string[] = [];
@@ -560,4 +578,951 @@ test("confirmPaymentById también guarda protectedUntil (mismo cálculo que purc
   const expected = computeContactProtectionDeadline(before, protectionHours);
   const diffMs = Math.abs(exchange.protectedUntil!.getTime() - expected.getTime());
   assert.ok(diffMs < 5000, `protectedUntil debe ser ~revealedAt + ${protectionHours}h`);
+});
+
+// =====================================================================
+// Etapa 2: protección bilateral de contactos y devoluciones (historial)
+// =====================================================================
+
+const NOTICE_V1 = "v1";
+
+async function makeAgentWithWhatsapp(credits: number) {
+  const agent = await makeAgent(credits);
+  await prisma.agentProfile.update({
+    where: { id: agent.profile.id },
+    data: { whatsapp: "0998887777" },
+  });
+  return agent;
+}
+
+async function setupPurchasedLead(agentCredits = 100) {
+  const agent = await makeAgentWithWhatsapp(agentCredits);
+  const buyerReq = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(buyerReq.request.id);
+  const purchase = await purchaseWithCredits({
+    agentUserId: agent.user.id,
+    agentProfileId: agent.profile.id,
+    requestId: buyerReq.request.id,
+  });
+  return { agent, buyerReq, purchase };
+}
+
+async function markContactedLongAgo(leadPurchaseId: string) {
+  await prisma.leadPurchase.update({
+    where: { id: leadPurchaseId },
+    data: { status: "CONTACTED", contactedAt: new Date(Date.now() - 100 * 60 * 60 * 1000) },
+  });
+}
+
+// ---------- Camino A: revealOwnContact ----------
+
+test("revealOwnContact: el agente revela su teléfono, queda registrado y fija externalContactRevealedAt", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await revealOwnContact({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    methods: ["PHONE"],
+    noticeVersion: NOTICE_V1,
+  });
+  const methods = await getRevealedContactMethods(purchase.id, "AGENT_TO_BUYER");
+  assert.deepEqual(methods, ["PHONE"]);
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.ok(lp.externalContactRevealedAt, "debe quedar fijado tras el primer reveal");
+});
+
+test("revealOwnContact: protección bilateral — no revela el contacto del comprador", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await revealOwnContact({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    methods: ["PHONE", "WHATSAPP"],
+    noticeVersion: NOTICE_V1,
+  });
+  const buyerSide = await getRevealedContactMethods(purchase.id, "BUYER_TO_AGENT");
+  assert.deepEqual(buyerSide, [], "el camino A nunca debe revelar el contacto del comprador");
+});
+
+test("revealOwnContact: rechaza revelar un método que el agente no tiene registrado", async () => {
+  const agent = await makeAgent(100); // sin whatsapp
+  const buyerReq = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(buyerReq.request.id);
+  const purchase = await purchaseWithCredits({
+    agentUserId: agent.user.id,
+    agentProfileId: agent.profile.id,
+    requestId: buyerReq.request.id,
+  });
+  await assert.rejects(
+    revealOwnContact({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["WHATSAPP"],
+      noticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+test("revealOwnContact: bloqueado mientras hay una devolución pendiente", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Número incorrecto",
+  });
+  await assert.rejects(
+    revealOwnContact({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["PHONE"],
+      noticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+test("revealOwnContact: un agente no puede revelar contacto de un lead que no le pertenece", async () => {
+  const { purchase } = await setupPurchasedLead();
+  const otherAgent = await makeAgent(50);
+  await assert.rejects(
+    revealOwnContact({
+      agentProfileId: otherAgent.profile.id,
+      agentUserId: otherAgent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["PHONE"],
+      noticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+test("revealOwnContact: doble revelación simultánea del mismo método no duplica la fila", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  const call = () =>
+    revealOwnContact({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["PHONE"],
+      noticeVersion: NOTICE_V1,
+    });
+  await Promise.all([call(), call()]);
+  const count = await prisma.contactRevealEvent.count({
+    where: { leadPurchaseId: purchase.id, direction: "AGENT_TO_BUYER", method: "PHONE" },
+  });
+  assert.equal(count, 1);
+});
+
+// ---------- Camino B: requestContactRelease / approve / reject / cancel ----------
+
+test("Camino B completo: solicitar y aprobar revela ambas direcciones", async () => {
+  const { agent, buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  await approveContactReleaseRequest({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    contactReleaseRequestId: request.id,
+    methods: ["PHONE", "WHATSAPP"],
+    approvalNoticeVersion: NOTICE_V1,
+  });
+
+  const agentSide = await getRevealedContactMethods(purchase.id, "AGENT_TO_BUYER");
+  const buyerSide = await getRevealedContactMethods(purchase.id, "BUYER_TO_AGENT");
+  assert.deepEqual(new Set(agentSide), new Set(["PHONE", "WHATSAPP"]));
+  assert.ok(buyerSide.includes("PHONE"), "el comprador siempre revela su teléfono al aprobar");
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.ok(lp.externalContactRevealedAt);
+
+  const updated = await prisma.contactReleaseRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(updated.status, "APPROVED");
+  assert.equal(updated.approvalNoticeVersion, NOTICE_V1);
+});
+
+test("requestContactRelease: máximo una solicitud pendiente por compra", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  await assert.rejects(
+    requestContactRelease({
+      buyerProfileId: buyerReq.buyerProfile.id,
+      buyerUserId: buyerReq.user.id,
+      leadPurchaseId: purchase.id,
+      noticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+test("rejectContactReleaseRequest: rechazar no revela nada ni afecta la elegibilidad de devolución", async () => {
+  const { agent, buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  await rejectContactReleaseRequest({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    contactReleaseRequestId: request.id,
+  });
+  const agentSide = await getRevealedContactMethods(purchase.id, "AGENT_TO_BUYER");
+  const buyerSide = await getRevealedContactMethods(purchase.id, "BUYER_TO_AGENT");
+  assert.deepEqual(agentSide, []);
+  assert.deepEqual(buyerSide, []);
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.externalContactRevealedAt, null);
+});
+
+test("cancelContactReleaseRequest: el comprador puede cancelar mientras está pendiente", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  await cancelContactReleaseRequest({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    contactReleaseRequestId: request.id,
+  });
+  const updated = await prisma.contactReleaseRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(updated.status, "CANCELLED");
+});
+
+test("cancelContactReleaseRequest: otro comprador no puede cancelar una solicitud ajena", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  const otherBuyer = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(otherBuyer.request.id);
+  await assert.rejects(
+    cancelContactReleaseRequest({
+      buyerProfileId: otherBuyer.buyerProfile.id,
+      buyerUserId: otherBuyer.user.id,
+      contactReleaseRequestId: request.id,
+    }),
+    PurchaseError,
+  );
+});
+
+test("approveContactReleaseRequest: otro agente no puede aprobar una solicitud que no es suya", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  const otherAgent = await makeAgentWithWhatsapp(50);
+  await assert.rejects(
+    approveContactReleaseRequest({
+      agentProfileId: otherAgent.profile.id,
+      agentUserId: otherAgent.user.id,
+      contactReleaseRequestId: request.id,
+      methods: ["PHONE"],
+      approvalNoticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+test("approveContactReleaseRequest: bloqueado mientras hay una devolución pendiente", async () => {
+  const { agent, buyerReq, purchase } = await setupPurchasedLead();
+  const request = await requestContactRelease({
+    buyerProfileId: buyerReq.buyerProfile.id,
+    buyerUserId: buyerReq.user.id,
+    leadPurchaseId: purchase.id,
+    noticeVersion: NOTICE_V1,
+  });
+  await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  await assert.rejects(
+    approveContactReleaseRequest({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      contactReleaseRequestId: request.id,
+      methods: ["PHONE"],
+      approvalNoticeVersion: NOTICE_V1,
+    }),
+    PurchaseError,
+  );
+});
+
+// ---------- Concurrencia real contra Postgres ----------
+
+test("concurrencia: dos requestContactRelease simultáneas — solo una queda PENDING", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  const call = () =>
+    requestContactRelease({
+      buyerProfileId: buyerReq.buyerProfile.id,
+      buyerUserId: buyerReq.user.id,
+      leadPurchaseId: purchase.id,
+      noticeVersion: NOTICE_V1,
+    });
+  const results = await Promise.allSettled([call(), call()]);
+  const fulfilled = results.filter((r) => r.status === "fulfilled");
+  const rejected = results.filter((r) => r.status === "rejected");
+  assert.equal(fulfilled.length, 1, "exactamente una debe crear la solicitud");
+  assert.equal(rejected.length, 1, "la otra debe fallar limpio, nunca duplicar");
+  const pendingCount = await prisma.contactReleaseRequest.count({
+    where: { leadPurchaseId: purchase.id, status: "PENDING" },
+  });
+  assert.equal(pendingCount, 1);
+});
+
+test("concurrencia: revealOwnContact y requestRefund(LEAD_QUALITY) simultáneos nunca dejan un estado inconsistente", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  const reveal = () =>
+    revealOwnContact({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["PHONE"],
+      noticeVersion: NOTICE_V1,
+    });
+  const refund = () =>
+    requestRefund({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      category: "LEAD_QUALITY",
+      reason: "Lead duplicado",
+    });
+  const results = await Promise.allSettled([reveal(), refund()]);
+  const fulfilled = results.filter((r) => r.status === "fulfilled");
+  assert.equal(fulfilled.length, 1, "exactamente una de las dos debe ganar la carrera");
+
+  // Invariante de negocio: si existe una RefundRequest LEAD_QUALITY para
+  // este lead, el contacto no puede estar revelado, y viceversa.
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  const refundRow = await prisma.refundRequest.findFirst({ where: { leadPurchaseId: purchase.id } });
+  if (refundRow) {
+    assert.equal(lp.externalContactRevealedAt, null, "no puede haber RefundRequest LEAD_QUALITY con contacto ya revelado");
+  } else {
+    assert.ok(lp.externalContactRevealedAt, "si no se creó la RefundRequest, el reveal debe haber ganado");
+  }
+});
+
+// ---------- Matriz de elegibilidad de devoluciones ----------
+
+test("isEligibleForRefundCategory: matriz completa antes/después de revelar", () => {
+  const base = { status: "CONTACTED" as const, contactedAt: new Date(Date.now() - 100 * 3600 * 1000) };
+  const notRevealed = { ...base, externalContactRevealedAt: null };
+  const revealed = { ...base, externalContactRevealedAt: new Date() };
+
+  assert.equal(isEligibleForRefundCategory("NO_RESPONSE", notRevealed, 48), true);
+  assert.equal(isEligibleForRefundCategory("LEAD_QUALITY", notRevealed, 48), true);
+  assert.equal(isEligibleForRefundCategory("PLATFORM_ERROR", notRevealed, 48), true);
+
+  assert.equal(isEligibleForRefundCategory("NO_RESPONSE", revealed, 48), false);
+  assert.equal(isEligibleForRefundCategory("LEAD_QUALITY", revealed, 48), false);
+  assert.equal(isEligibleForRefundCategory("PLATFORM_ERROR", revealed, 48), true);
+});
+
+test("requestRefund de punta a punta: NO_RESPONSE y LEAD_QUALITY bloqueadas tras revelar, PLATFORM_ERROR sigue elegible", async () => {
+  const leadA = await setupPurchasedLead();
+  const leadB = await setupPurchasedLead();
+  const leadC = await setupPurchasedLead();
+  await markContactedLongAgo(leadA.purchase.id);
+
+  for (const { agent, purchase } of [leadA, leadB, leadC]) {
+    await revealOwnContact({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      methods: ["PHONE"],
+      noticeVersion: NOTICE_V1,
+    });
+  }
+
+  await assert.rejects(
+    requestRefund({
+      agentProfileId: leadA.agent.profile.id,
+      agentUserId: leadA.agent.user.id,
+      leadPurchaseId: leadA.purchase.id,
+      category: "NO_RESPONSE",
+      reason: "No respondió",
+    }),
+    PurchaseError,
+  );
+  await assert.rejects(
+    requestRefund({
+      agentProfileId: leadB.agent.profile.id,
+      agentUserId: leadB.agent.user.id,
+      leadPurchaseId: leadB.purchase.id,
+      category: "LEAD_QUALITY",
+      reason: "Lead duplicado",
+    }),
+    PurchaseError,
+  );
+  const created = await requestRefund({
+    agentProfileId: leadC.agent.profile.id,
+    agentUserId: leadC.agent.user.id,
+    leadPurchaseId: leadC.purchase.id,
+    category: "PLATFORM_ERROR",
+    reason: "Cobro duplicado por un error de la plataforma",
+  });
+  assert.equal(created.category, "PLATFORM_ERROR");
+  assert.equal(created.status, "PENDING");
+});
+
+// ---------- Validación de la reclamación: categoría/motivo/evidencia (Etapa 2.1) ----------
+
+test("requestRefundSchema: acepta las tres categorías con un motivo válido", () => {
+  for (const category of ["NO_RESPONSE", "LEAD_QUALITY", "PLATFORM_ERROR"] as const) {
+    const parsed = requestRefundSchema.safeParse({ category, reason: "El usuario no respondió" });
+    assert.equal(parsed.success, true, `categoría ${category} debe ser válida`);
+  }
+});
+
+test("requestRefundSchema: rechaza sin categoría (no preselecciona ninguna) y con categoría inválida", () => {
+  assert.equal(requestRefundSchema.safeParse({ reason: "Motivo" }).success, false);
+  assert.equal(
+    requestRefundSchema.safeParse({ category: "", reason: "Motivo" }).success,
+    false,
+  );
+  assert.equal(
+    requestRefundSchema.safeParse({ category: "INVENTADA", reason: "Motivo" }).success,
+    false,
+  );
+});
+
+test("requestRefundSchema/requestRefund: rechazan un motivo vacío, solo espacios, o demasiado largo", async () => {
+  assert.equal(
+    requestRefundSchema.safeParse({ category: "LEAD_QUALITY", reason: "" }).success,
+    false,
+  );
+  assert.equal(
+    requestRefundSchema.safeParse({ category: "LEAD_QUALITY", reason: "   " }).success,
+    false,
+  );
+  assert.equal(
+    requestRefundSchema.safeParse({ category: "LEAD_QUALITY", reason: "a".repeat(1001) }).success,
+    false,
+  );
+
+  const { agent, purchase } = await setupPurchasedLead();
+  await assert.rejects(
+    requestRefund({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      category: "LEAD_QUALITY",
+      reason: "   ",
+    }),
+    PurchaseError,
+  );
+  const count = await prisma.refundRequest.count({ where: { leadPurchaseId: purchase.id } });
+  assert.equal(count, 0, "un motivo inválido no debe crear ninguna RefundRequest");
+});
+
+test("requestRefund: evidencia es opcional y se guarda como texto libre cuando se provee", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  const created = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+    evidence: "Captura de pantalla adjunta en el ticket #123",
+  });
+  assert.equal(created.evidence, "Captura de pantalla adjunta en el ticket #123");
+
+  const { agent: agent2, purchase: purchase2 } = await setupPurchasedLead();
+  const createdSinEvidencia = await requestRefund({
+    agentProfileId: agent2.profile.id,
+    agentUserId: agent2.user.id,
+    leadPurchaseId: purchase2.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  assert.equal(createdSinEvidencia.evidence, null);
+});
+
+test("requestRefund: categoría no elegible (NO_RESPONSE sobre un lead que no está CONTACTED) rechazada por el servidor", async () => {
+  const { agent, purchase } = await setupPurchasedLead(); // status PURCHASED, nunca contactado
+  await assert.rejects(
+    requestRefund({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      category: "NO_RESPONSE",
+      reason: "No respondió",
+    }),
+    PurchaseError,
+  );
+  const count = await prisma.refundRequest.count({ where: { leadPurchaseId: purchase.id } });
+  assert.equal(count, 0, "una categoría no elegible nunca debe crear la RefundRequest");
+});
+
+test("decisionReasonSchema: rechaza vacío/solo espacios y demasiado largo, acepta un texto normal", () => {
+  assert.equal(decisionReasonSchema.safeParse("").success, false);
+  assert.equal(decisionReasonSchema.safeParse("   ").success, false);
+  assert.equal(decisionReasonSchema.safeParse("a".repeat(1001)).success, false);
+  assert.equal(decisionReasonSchema.safeParse("Verificado con el usuario").success, true);
+});
+
+// ---------- Atomicidad: historial y auditoría dentro de la transacción (Etapa 2.1) ----------
+
+test("recordStatusChange y logAudit con tx: un error posterior dentro de la misma transacción revierte también el cambio de negocio", async () => {
+  const { purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+
+  const historyCountBefore = await prisma.leadStatusHistory.count({
+    where: { leadPurchaseId: purchase.id },
+  });
+  const auditCountBefore = await prisma.auditLog.count({ where: { entityId: purchase.id } });
+
+  await assert.rejects(
+    prisma.$transaction(async (tx) => {
+      // Mismo orden que requestRefund/approveRefund/rejectRefund: el
+      // cambio de negocio primero, historial y auditoría DENTRO de la
+      // misma tx usando `tx` — y acá, deliberadamente, un error después de
+      // los tres, antes de que la transacción pueda confirmar.
+      await tx.leadPurchase.update({
+        where: { id: purchase.id },
+        data: { status: "REFUND_REQUESTED", refundRequestedAt: new Date() },
+      });
+      await recordStatusChange(
+        purchase.requestId,
+        "CONTACTED",
+        "REFUND_REQUESTED",
+        { leadPurchaseId: purchase.id },
+        tx,
+      );
+      await logAudit(
+        { action: "TEST_FORCED_ROLLBACK", entityType: "LeadPurchase", entityId: purchase.id },
+        tx,
+      );
+      throw new Error("fallo forzado después de negocio+historial+auditoría, antes del commit");
+    }),
+    /fallo forzado/,
+  );
+
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.status, "CONTACTED", "el cambio de estado de negocio debe revertirse");
+  const historyCountAfter = await prisma.leadStatusHistory.count({
+    where: { leadPurchaseId: purchase.id },
+  });
+  const auditCountAfter = await prisma.auditLog.count({ where: { entityId: purchase.id } });
+  assert.equal(historyCountAfter, historyCountBefore, "el historial debe revertirse junto con el resto");
+  assert.equal(auditCountAfter, auditCountBefore, "la auditoría debe revertirse junto con el resto");
+});
+
+test("approveRefund: historial y auditoría quedan escritos de forma atómica con el crédito al confirmar", async () => {
+  const { agent, purchase } = await setupPurchasedLead(30);
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+
+  await approveRefund({
+    adminUserId: admin.id,
+    refundRequestId: request.id,
+    decisionReason: "Confirmado con el comprador",
+  });
+
+  const history = await prisma.leadStatusHistory.findMany({
+    where: { leadPurchaseId: purchase.id, toStatus: "REFUNDED" },
+  });
+  assert.equal(history.length, 1, "debe quedar exactamente un registro de historial para REFUNDED");
+  const audit = await prisma.auditLog.findMany({
+    where: { entityType: "RefundRequest", entityId: request.id, action: "REFUND_APPROVED" },
+  });
+  assert.equal(audit.length, 1, "debe quedar exactamente una entrada de auditoría para la aprobación");
+  const metadata = audit[0]!.metadata as { decisionReason?: string } | null;
+  assert.equal(metadata?.decisionReason, "Confirmado con el comprador");
+});
+
+// ---------- Aprobación / rechazo de devoluciones ----------
+
+test("approveRefund cambia el estado a REFUNDED y acredita el crédito", async () => {
+  const { agent, purchase } = await setupPurchasedLead(30);
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  const balanceBefore = (await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } }))
+    .creditsBalance;
+
+  await approveRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "Verificado" });
+
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.status, "REFUNDED");
+  const balanceAfter = (await prisma.agentProfile.findUniqueOrThrow({ where: { id: agent.profile.id } }))
+    .creditsBalance;
+  assert.equal(balanceAfter, balanceBefore + purchase.creditsUsed);
+  const updatedRequest = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(updatedRequest.status, "APPROVED");
+  assert.equal(updatedRequest.decisionReason, "Verificado");
+});
+
+test("rejectRefund restaura leadPurchaseStatusBefore (no CLOSED) y permite una nueva solicitud después", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+
+  const request1 = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  await rejectRefund({ adminUserId: admin.id, refundRequestId: request1.id, decisionReason: "Insuficiente" });
+
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.status, "CONTACTED", "debe volver al estado previo, no a CLOSED");
+
+  const request2 = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "Nuevo intento, sigue sin responder",
+  });
+  assert.notEqual(request2.id, request1.id);
+
+  const allRequests = await prisma.refundRequest.findMany({ where: { leadPurchaseId: purchase.id } });
+  assert.equal(allRequests.length, 2, "ambos intentos deben conservarse, nunca sobrescribirse");
+  const stillThere = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request1.id } });
+  assert.equal(stillThere.status, "REJECTED", "la decisión anterior no debe alterarse");
+});
+
+test("approveRefund/rejectRefund: no se puede procesar la misma solicitud dos veces, ni modificar su decisionReason ya fijado", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  await approveRefund({
+    adminUserId: admin.id,
+    refundRequestId: request.id,
+    decisionReason: "Verificado, el usuario confirmó que nunca lo contactaron",
+  });
+  await assert.rejects(
+    approveRefund({
+      adminUserId: admin.id,
+      refundRequestId: request.id,
+      decisionReason: "Segundo intento de aprobar",
+    }),
+    PurchaseError,
+  );
+  await assert.rejects(
+    rejectRefund({
+      adminUserId: admin.id,
+      refundRequestId: request.id,
+      decisionReason: "Intento de rechazar algo ya aprobado",
+    }),
+    PurchaseError,
+  );
+  // La decisión y su motivo quedan exactamente como los fijó la primera
+  // decisión — ninguna de las dos llamadas posteriores los tocó.
+  const stillDecided = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stillDecided.status, "APPROVED");
+  assert.equal(
+    stillDecided.decisionReason,
+    "Verificado, el usuario confirmó que nunca lo contactaron",
+  );
+});
+
+// ---------- decisionReason obligatorio (Etapa 2.1) ----------
+
+test("approveRefund rechaza decisionReason vacío o compuesto solo de espacios", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  await assert.rejects(
+    approveRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "" }),
+    PurchaseError,
+  );
+  await assert.rejects(
+    approveRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "   " }),
+    PurchaseError,
+  );
+  // Sigue PENDING: el rechazo de la validación no debe haber alterado nada.
+  const stillPending = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stillPending.status, "PENDING");
+  assert.equal(stillPending.decisionReason, null);
+});
+
+test("rejectRefund rechaza decisionReason vacío o compuesto solo de espacios", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  const request = await prisma.refundRequest.findFirstOrThrow({
+    where: { leadPurchaseId: purchase.id, status: "PENDING" },
+  });
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  await assert.rejects(
+    rejectRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "   " }),
+    PurchaseError,
+  );
+  const stillPending = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stillPending.status, "PENDING");
+});
+
+test("concurrencia: dos requestRefund simultáneas para la misma compra — solo una queda PENDING", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const call = () =>
+    requestRefund({
+      agentProfileId: agent.profile.id,
+      agentUserId: agent.user.id,
+      leadPurchaseId: purchase.id,
+      category: "NO_RESPONSE",
+      reason: "No respondió",
+    });
+  const results = await Promise.allSettled([call(), call()]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(results.filter((r) => r.status === "rejected").length, 1);
+  const pendingCount = await prisma.refundRequest.count({
+    where: { leadPurchaseId: purchase.id, status: "PENDING" },
+  });
+  assert.equal(pendingCount, 1);
+});
+
+test("concurrencia: approveRefund y rejectRefund simultáneos sobre la misma solicitud — solo uno surte efecto", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  const startedAt = Date.now();
+  const results = await Promise.allSettled([
+    approveRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "Aprobando" }),
+    rejectRefund({ adminUserId: admin.id, refundRequestId: request.id, decisionReason: "Rechazando" }),
+  ]);
+  const elapsedMs = Date.now() - startedAt;
+  // Guarda de regresión: el autobloqueo encontrado en la Etapa 2 (llamar
+  // recordStatusChange/logAudit con el cliente prisma global mientras tx
+  // sostenía el FOR UPDATE) solo se resolvía vía el timeout de 5000ms de
+  // Prisma. Ahora que ambas aceptan `tx` y corren dentro de la misma
+  // transacción, esta carrera debe resolverse en milisegundos reales de
+  // Postgres, nunca cerca de ese timeout.
+  assert.ok(
+    elapsedMs < 3000,
+    `no debe reaparecer el autobloqueo de la Etapa 2 (tardó ${elapsedMs}ms)`,
+  );
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  const updated = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.ok(updated.status === "APPROVED" || updated.status === "REJECTED");
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.status, updated.status === "APPROVED" ? "REFUNDED" : "CONTACTED");
+});
+
+// ---------- Interacciones con las 5 funciones legacy ----------
+
+test("releaseLead falla mientras hay una devolución pendiente", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  await assert.rejects(
+    releaseLead(agent.profile.id, purchase.id, "Otro"),
+    PurchaseError,
+  );
+});
+
+test("markAgentContacted falla sobre un lead ya REFUNDED (guarda nueva, antes no existía)", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await markContactedLongAgo(purchase.id);
+  const admin = await prisma.user.create({
+    data: {
+      email: `test-admin-${RUN_ID}-${createdUserIds.length}@test.local`,
+      passwordHash: await hashPassword("test12345"),
+      name: "Admin de prueba",
+      role: "ADMIN",
+    },
+  });
+  createdUserIds.push(admin.id);
+  const request = await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "NO_RESPONSE",
+    reason: "No respondió",
+  });
+  await approveRefund({
+    adminUserId: admin.id,
+    refundRequestId: request.id,
+    decisionReason: "Verificado",
+  });
+
+  await assert.rejects(
+    markAgentContacted(agent.profile.id, purchase.id),
+    PurchaseError,
+  );
+});
+
+test("markBuyerOutcome: un comprador no puede actuar sobre la solicitud de otro", async () => {
+  const { buyerReq, purchase } = await setupPurchasedLead();
+  const otherBuyer = await makeBuyerRequest("COMPRAR");
+  createdRequestIds.push(otherBuyer.request.id);
+  await assert.rejects(
+    markBuyerOutcome(otherBuyer.buyerProfile.id, purchase.id, "NO_CONTACT"),
+    PurchaseError,
+  );
+  // El dueño real sigue pudiendo.
+  await markBuyerOutcome(buyerReq.buyerProfile.id, purchase.id, "NO_CONTACT");
+  const lp = await prisma.leadPurchase.findUniqueOrThrow({ where: { id: purchase.id } });
+  assert.equal(lp.status, "NO_CONTACT");
+});
+
+test("reactivateLeadPurchase: sigue exigiendo NO_CONTACT/NO_MATCH, ahora de forma atómica", async () => {
+  const { purchase } = await setupPurchasedLead(); // status PURCHASED, no elegible
+  await assert.rejects(
+    reactivateLeadPurchase("admin-test-id", purchase.id),
+    PurchaseError,
+  );
+});
+
+test("markAppointmentScheduled falla mientras hay una devolución pendiente", async () => {
+  const { agent, purchase } = await setupPurchasedLead();
+  await requestRefund({
+    agentProfileId: agent.profile.id,
+    agentUserId: agent.user.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  await assert.rejects(
+    markAppointmentScheduled(agent.profile.id, purchase.id),
+    PurchaseError,
+  );
+});
+
+// ---------- Autorización adicional ----------
+
+test("requestRefund: un agente no puede pedir devolución de un lead que no le pertenece", async () => {
+  const { purchase } = await setupPurchasedLead();
+  const otherAgent = await makeAgent(50);
+  await assert.rejects(
+    requestRefund({
+      agentProfileId: otherAgent.profile.id,
+      agentUserId: otherAgent.user.id,
+      leadPurchaseId: purchase.id,
+      category: "LEAD_QUALITY",
+      reason: "Lead duplicado",
+    }),
+    PurchaseError,
+  );
 });
