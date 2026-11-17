@@ -5,7 +5,7 @@ import { getPurchasedLeadDetail } from "@/lib/services/leads";
 import { listAgentProperties } from "@/lib/services/properties";
 import { listSharedPropertiesForAgent } from "@/lib/services/propertyShares";
 import { getRefundEligibleHours } from "@/lib/settings";
-import { isEligibleForRefundRequest } from "@/lib/services/purchase";
+import { isEligibleForRefundCategory } from "@/lib/services/purchase";
 import { listMessagesForAgent, ConversationError } from "@/lib/services/conversation";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
@@ -59,7 +59,14 @@ export default async function PurchasedLeadDetailPage({
   }
 
   const active = OCCUPYING_STATUSES.includes(purchase.status);
-  const canRequestRefund = isEligibleForRefundRequest(purchase, refundEligibleHours);
+  // El botón de "Solicitar devolución" sigue siendo solo el motivo
+  // NO_RESPONSE (ver requestRefundAction) hasta que se autorice un
+  // selector de categoría real (etapa de UI, fuera de esta).
+  const canRequestRefund = isEligibleForRefundCategory(
+    "NO_RESPONSE",
+    purchase,
+    refundEligibleHours,
+  );
 
   return (
     <>

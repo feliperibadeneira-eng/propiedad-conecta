@@ -19,7 +19,12 @@ export const REACTIVATION_ELIGIBLE_STATUSES: LeadPurchaseStatus[] = [
   "NO_MATCH",
 ];
 
-// Estados desde los que un agente puede pedir la devolución de su crédito
-// (garantía del lead, sección 7): tiene que haber intentado contactar y
-// el usuario no haber confirmado respuesta.
-export const REFUND_ELIGIBLE_STATUSES: LeadPurchaseStatus[] = ["CONTACTED"];
+// Estados desde los que las acciones legacy (liberar, marcar contactado,
+// marcar cita, resultado del comprador) y las solicitudes de devolución
+// LEAD_QUALITY/PLATFORM_ERROR pueden partir — igual que OCCUPYING_STATUSES
+// pero sin REFUND_REQUESTED: mientras hay una devolución pendiente, solo
+// approveRefund/rejectRefund pueden cambiar el status (ver especificación
+// de protección de contactos y devoluciones).
+export const MODIFIABLE_BY_LEGACY_ACTIONS: LeadPurchaseStatus[] = OCCUPYING_STATUSES.filter(
+  (s) => s !== "REFUND_REQUESTED",
+);

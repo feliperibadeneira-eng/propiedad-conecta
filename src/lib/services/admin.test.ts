@@ -8,8 +8,8 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { hashPassword } from "../password";
-import { getMarketplaceMetrics, ecuadorTodayStart } from "./admin";
-import { purchaseWithCredits } from "./purchase";
+import { getMarketplaceMetrics, ecuadorTodayStart, listRefundRequests } from "./admin";
+import { purchaseWithCredits, requestRefund, approveRefund, rejectRefund } from "./purchase";
 import { createProperty } from "./properties";
 import { shareProperty } from "./propertyShares";
 
@@ -269,4 +269,115 @@ test("ecuadorTodayStart: a media mañana en Ecuador, hoy ya avanzó de fecha", (
   // — ya es "hoy" (3 de octubre) para Ecuador.
   const start = ecuadorTodayStart(new Date("2026-10-03T12:00:00.000Z"));
   assert.equal(start.toISOString(), "2026-10-03T05:00:00.000Z");
+});
+
+// ---------- listRefundRequests() (Etapa 2.1): consulta RefundRequest directamente ----------
+
+async function makeAdmin() {
+  return makeUser("ADMIN");
+}
+
+test("listRefundRequests: una solicitud pendiente aparece con su categoría, motivo y evidencia", async () => {
+  const { request, user: buyerUser } = await makeBuyerWithRequest("COMPRAR");
+  const { user: agentUser, profile: agentProfile } = await makeAgent(50);
+  const purchase = await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: request.id,
+  });
+  await requestRefund({
+    agentProfileId: agentProfile.id,
+    agentUserId: agentUser.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "El teléfono no corresponde a nadie",
+    evidence: "Llamé 3 veces, número inexistente",
+  });
+
+  const refunds = await listRefundRequests();
+  const row = refunds.find((r) => r.leadPurchaseId === purchase.id);
+  assert.ok(row, "la solicitud pendiente debe aparecer en el listado");
+  assert.equal(row!.status, "PENDING");
+  assert.equal(row!.category, "LEAD_QUALITY");
+  assert.equal(row!.reason, "El teléfono no corresponde a nadie");
+  assert.equal(row!.evidence, "Llamé 3 veces, número inexistente");
+  assert.equal(row!.leadPurchase.agent.user.id, agentUser.id);
+  assert.equal(row!.leadPurchase.request.buyer.userId, buyerUser.id);
+});
+
+test("listRefundRequests: una reclamación rechazada sigue visible (antes desaparecía con CLOSED)", async () => {
+  const { request } = await makeBuyerWithRequest("COMPRAR");
+  const { user: agentUser, profile: agentProfile } = await makeAgent(50);
+  const purchase = await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: request.id,
+  });
+  const refundRequest = await requestRefund({
+    agentProfileId: agentProfile.id,
+    agentUserId: agentUser.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Lead duplicado",
+  });
+  const admin = await makeAdmin();
+  await rejectRefund({
+    adminUserId: admin.id,
+    refundRequestId: refundRequest.id,
+    decisionReason: "El lead es válido, no corresponde la devolución",
+  });
+
+  const refunds = await listRefundRequests();
+  const row = refunds.find((r) => r.id === refundRequest.id);
+  assert.ok(row, "una reclamación RECHAZADA debe seguir visible en el listado");
+  assert.equal(row!.status, "REJECTED");
+  assert.equal(row!.decisionReason, "El lead es válido, no corresponde la devolución");
+  assert.equal(row!.decidedBy?.id, admin.id);
+});
+
+test("listRefundRequests: varios intentos sobre la misma compra se muestran como registros independientes", async () => {
+  const { request } = await makeBuyerWithRequest("COMPRAR");
+  const { user: agentUser, profile: agentProfile } = await makeAgent(50);
+  const purchase = await purchaseWithCredits({
+    agentUserId: agentUser.id,
+    agentProfileId: agentProfile.id,
+    requestId: request.id,
+  });
+  const admin = await makeAdmin();
+
+  const firstAttempt = await requestRefund({
+    agentProfileId: agentProfile.id,
+    agentUserId: agentUser.id,
+    leadPurchaseId: purchase.id,
+    category: "LEAD_QUALITY",
+    reason: "Primer intento, lead duplicado",
+  });
+  await rejectRefund({
+    adminUserId: admin.id,
+    refundRequestId: firstAttempt.id,
+    decisionReason: "No parece duplicado",
+  });
+
+  const secondAttempt = await requestRefund({
+    agentProfileId: agentProfile.id,
+    agentUserId: agentUser.id,
+    leadPurchaseId: purchase.id,
+    category: "PLATFORM_ERROR",
+    reason: "Segundo intento, cobro duplicado por error de la plataforma",
+  });
+  await approveRefund({
+    adminUserId: admin.id,
+    refundRequestId: secondAttempt.id,
+    decisionReason: "Confirmado, fue un error de cobro",
+  });
+
+  const refunds = await listRefundRequests();
+  const rowsForThisLead = refunds.filter((r) => r.leadPurchaseId === purchase.id);
+  assert.equal(rowsForThisLead.length, 2, "ambos intentos deben aparecer, nunca colapsados en uno");
+  const first = rowsForThisLead.find((r) => r.id === firstAttempt.id);
+  const second = rowsForThisLead.find((r) => r.id === secondAttempt.id);
+  assert.equal(first?.status, "REJECTED");
+  assert.equal(first?.category, "LEAD_QUALITY");
+  assert.equal(second?.status, "APPROVED");
+  assert.equal(second?.category, "PLATFORM_ERROR");
 });

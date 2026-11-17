@@ -7,6 +7,8 @@ import type {
   PaymentStatus,
   CreditPurchaseStatus,
   PropertyStatus,
+  RefundRequestCategory,
+  RefundRequestStatus,
 } from "@/generated/prisma/enums";
 
 export const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
@@ -55,6 +57,18 @@ export const LEAD_PURCHASE_STATUS_LABELS: Record<LeadPurchaseStatus, string> = {
   REFUNDED: "Devuelto",
   APPOINTMENT_SCHEDULED: "Cita agendada",
   CLOSED: "Cerrada",
+};
+
+export const REFUND_CATEGORY_LABELS: Record<RefundRequestCategory, string> = {
+  NO_RESPONSE: "El usuario no respondió",
+  LEAD_QUALITY: "El lead no era válido o de mala calidad",
+  PLATFORM_ERROR: "Error de la plataforma",
+};
+
+export const REFUND_REQUEST_STATUS_LABELS: Record<RefundRequestStatus, string> = {
+  PENDING: "Pendiente",
+  APPROVED: "Aprobada",
+  REJECTED: "Rechazada",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma, type Db } from "@/lib/db";
 import { notify } from "@/lib/services/notifications";
 import { logEvent } from "@/lib/services/analytics";
 import { OCCUPYING_STATUSES } from "@/lib/services/constants";
@@ -153,13 +153,17 @@ export async function recomputeRequestStatus(requestId: string) {
   }
 }
 
+// `db` acepta un `tx` de una transacción abierta (default: el cliente
+// global) para que el historial pueda ser atómico con el cambio de estado
+// que lo origina, en vez de una escritura separada después del commit.
 export async function recordStatusChange(
   requestId: string,
   from: string,
   to: string,
   opts: { reason?: string; changedByUserId?: string; leadPurchaseId?: string } = {},
+  db: Db = prisma,
 ) {
-  await prisma.leadStatusHistory.create({
+  await db.leadStatusHistory.create({
     data: {
       requestId,
       fromStatus: from,

@@ -10,6 +10,7 @@ import {
   PurchaseError,
 } from "@/lib/services/purchase";
 import { shareProperty } from "@/lib/services/propertyShares";
+import { requestRefundSchema } from "@/lib/validators/refund";
 import {
   sendTextMessageAsAgent,
   sendPropertyShareMessage,
@@ -49,14 +50,34 @@ export type RequestRefundState = { error?: string };
 
 // Sección 8: pide la devolución del crédito de este lead. Queda pendiente
 // de revisión por un admin, no se acredita nada todavía.
+//
+// Categoría/motivo/evidencia (Etapa 2.1): la elegibilidad real de cada
+// categoría sigue siendo responsabilidad exclusiva de requestRefund() — lo
+// que llega acá desde el formulario nunca decide por sí solo si la
+// solicitud es válida, el servidor la vuelve a evaluar igual que antes.
 export async function requestRefundAction(
   leadPurchaseId: string,
   _prev: RequestRefundState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<RequestRefundState> {
   const user = await requireAgent();
+  const parsed = requestRefundSchema.safeParse({
+    category: formData.get("category"),
+    reason: formData.get("reason"),
+    evidence: formData.get("evidence") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
   try {
-    await requestRefund(user.agentProfileId!, leadPurchaseId);
+    await requestRefund({
+      agentProfileId: user.agentProfileId!,
+      agentUserId: user.id,
+      leadPurchaseId,
+      category: parsed.data.category,
+      reason: parsed.data.reason,
+      evidence: parsed.data.evidence,
+    });
   } catch (e) {
     if (e instanceof PurchaseError) return { error: e.message };
     throw e;

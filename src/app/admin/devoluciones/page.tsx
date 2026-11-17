@@ -4,23 +4,22 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
+import { inputBase } from "@/components/ui/Field";
 import { formatDate } from "@/lib/format";
-import { PROPERTY_TYPE_LABELS } from "@/lib/enums";
+import {
+  PROPERTY_TYPE_LABELS,
+  REFUND_CATEGORY_LABELS,
+  REFUND_REQUEST_STATUS_LABELS,
+} from "@/lib/enums";
 import { ADMIN_NAV_LINKS } from "../nav";
 import { approveRefundAction, rejectRefundAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABEL = {
-  REFUND_REQUESTED: "Pendiente",
-  REFUNDED: "Aprobada",
-  CLOSED: "Rechazada",
-} as const;
-
 const STATUS_TONE = {
-  REFUND_REQUESTED: "warning",
-  REFUNDED: "success",
-  CLOSED: "neutral",
+  PENDING: "warning",
+  APPROVED: "success",
+  REJECTED: "neutral",
 } as const;
 
 export default async function AdminRefundsPage() {
@@ -35,8 +34,8 @@ export default async function AdminRefundsPage() {
           Solicitudes de devolución
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Un agente pide la devolución de su crédito cuando el usuario no
-          respondió después de sus intentos de contacto.
+          Cada intento queda registrado por separado, incluidos los ya
+          decididos — un lead puede tener varios a lo largo del tiempo.
         </p>
 
         {refunds.length === 0 ? (
@@ -50,35 +49,70 @@ export default async function AdminRefundsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs text-muted-2">
-                      LEAD #{r.id.slice(0, 8).toUpperCase()}
+                      LEAD #{r.leadPurchaseId.slice(0, 8).toUpperCase()}
                     </p>
                     <p className="font-semibold">
-                      {PROPERTY_TYPE_LABELS[r.request.propertyType]} en{" "}
-                      {r.request.ciudad}
+                      {PROPERTY_TYPE_LABELS[r.leadPurchase.request.propertyType]} en{" "}
+                      {r.leadPurchase.request.ciudad}
                     </p>
                     <p className="text-sm text-muted">
-                      Agente: {r.agent.user.name} · Usuario:{" "}
-                      {r.request.buyer.user.name}
+                      Agente: {r.leadPurchase.agent.user.name} · Usuario:{" "}
+                      {r.leadPurchase.request.buyer.user.name}
                     </p>
                     <p className="mt-1 text-xs text-muted-2">
-                      Solicitada el{" "}
-                      {r.refundRequestedAt ? formatDate(r.refundRequestedAt) : "—"}
-                      {" · "}Motivo: el usuario no respondió
+                      Solicitada el {formatDate(r.requestedAt)} · Motivo:{" "}
+                      {REFUND_CATEGORY_LABELS[r.category]}
                     </p>
                   </div>
-                  <Badge tone={STATUS_TONE[r.status as keyof typeof STATUS_TONE]}>
-                    {STATUS_LABEL[r.status as keyof typeof STATUS_LABEL]}
+                  <Badge tone={STATUS_TONE[r.status]}>
+                    {REFUND_REQUEST_STATUS_LABELS[r.status]}
                   </Badge>
                 </div>
 
-                {r.status === "REFUND_REQUESTED" && (
-                  <div className="mt-4 flex gap-2">
-                    <form action={approveRefundAction.bind(null, r.id)}>
+                <p className="mt-3 text-sm text-foreground">{r.reason}</p>
+                {r.evidence && (
+                  <p className="mt-1 text-sm text-muted">Evidencia: {r.evidence}</p>
+                )}
+
+                {r.status !== "PENDING" && (
+                  <p className="mt-2 text-xs text-muted-2">
+                    Decidida el {r.decidedAt ? formatDate(r.decidedAt) : "—"}
+                    {r.decidedBy ? ` por ${r.decidedBy.name}` : ""}
+                    {r.decisionReason ? ` · Motivo de la decisión: ${r.decisionReason}` : ""}
+                  </p>
+                )}
+
+                {r.status === "PENDING" && (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <form
+                      action={approveRefundAction.bind(null, r.id)}
+                      className="flex min-w-[240px] flex-1 gap-2"
+                    >
+                      <textarea
+                        name="decisionReason"
+                        required
+                        maxLength={1000}
+                        rows={1}
+                        placeholder="Motivo de la decisión"
+                        className={`${inputBase} flex-1`}
+                      />
                       <button type="submit" className={buttonClasses("primary", "sm")}>
-                        Aprobar (+1 crédito)
+                        Aprobar (+{r.leadPurchase.creditsUsed} crédito
+                        {r.leadPurchase.creditsUsed > 1 ? "s" : ""})
                       </button>
                     </form>
-                    <form action={rejectRefundAction.bind(null, r.id)}>
+                    <form
+                      action={rejectRefundAction.bind(null, r.id)}
+                      className="flex min-w-[240px] flex-1 gap-2"
+                    >
+                      <textarea
+                        name="decisionReason"
+                        required
+                        maxLength={1000}
+                        rows={1}
+                        placeholder="Motivo de la decisión"
+                        className={`${inputBase} flex-1`}
+                      />
                       <button type="submit" className={buttonClasses("secondary", "sm")}>
                         Rechazar
                       </button>

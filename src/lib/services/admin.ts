@@ -87,15 +87,26 @@ export async function listPayments() {
   });
 }
 
-// Sección 8-9: panel de "Solicitudes de devolución" del admin.
+// Sección 8-9: panel de "Solicitudes de devolución" del admin (Etapa 2.1).
+// Consulta RefundRequest directamente, no LeadPurchase.status — cada
+// intento (pendiente, aprobado o rechazado) es su propia fila, así que un
+// mismo lead con varios intentos los muestra todos, y uno rechazado nunca
+// desaparece (antes se inferían 3 estados desde LeadPurchase.status, que
+// solo puede valer uno de REFUND_REQUESTED/REFUNDED/CLOSED a la vez — y
+// rejectRefund ya no deja CLOSED, así que los rechazos se perdían).
 export async function listRefundRequests() {
-  return prisma.leadPurchase.findMany({
-    where: { status: { in: ["REFUND_REQUESTED", "REFUNDED", "CLOSED"] } },
+  return prisma.refundRequest.findMany({
     include: {
-      request: { include: { buyer: { include: { user: true } } } },
-      agent: { include: { user: true } },
+      leadPurchase: {
+        include: {
+          request: { include: { buyer: { include: { user: true } } } },
+          agent: { include: { user: true } },
+        },
+      },
+      requestedBy: true,
+      decidedBy: true,
     },
-    orderBy: { refundRequestedAt: "desc" },
+    orderBy: { requestedAt: "desc" },
   });
 }
 
