@@ -74,7 +74,7 @@ export default async function PurchasedLeadDetailPage({
         links={AGENT_NAV_LINKS}
         creditsBalance={creditsBalance}
       />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <p className="text-xs text-muted-2">
           LEAD #{purchase.id.slice(0, 8).toUpperCase()}
         </p>
