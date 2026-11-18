@@ -97,7 +97,7 @@ export default async function AdminSettingsPage() {
                   <img
                     src={values.deunaQrImage}
                     alt="QR de Deuna actual"
-                    className="mb-3 h-40 w-40 rounded-xl border border-border object-contain"
+                    className="mb-3 h-40 w-40 rounded-none border border-border object-contain"
                   />
                 )}
                 <input

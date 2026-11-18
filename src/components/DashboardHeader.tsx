@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Coins, LogOut, MessageCircle } from "lucide-react";
 import { logoutAction } from "@/app/login/actions";
 import { getUnreadConversationCountAction } from "@/app/dashboard/actions";
@@ -56,6 +56,39 @@ export function DashboardHeader({
     },
   });
 
+  // Señal de que el nav tiene más links ocultos a la derecha (sección 2,
+  // Fase C): el nav ya se desplaza horizontalmente con overflow-x-auto,
+  // pero sin esto no hay ninguna pista visual de que se puede deslizar.
+  // Es un efecto de `mask-image` puro — nunca agrega un elemento al DOM,
+  // nunca cambia pointer-events, nunca oculta contenido realmente (el
+  // texto sigue completo para lectores de pantalla y para Tab). Se
+  // recalcula con ResizeObserver (cambios de tamaño/contenido) y con el
+  // propio scroll del nav, así desaparece apenas no quede nada oculto a la
+  // derecha — nunca deja el último link permanentemente atenuado.
+  const navRef = useRef<HTMLElement>(null);
+  const [hasHiddenLinksRight, setHasHiddenLinksRight] = useState(false);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const THRESHOLD_PX = 4; // margen para redondeos de subpíxel al llegar al final
+    const update = () => {
+      const hiddenRight = nav.scrollWidth - nav.clientWidth - nav.scrollLeft > THRESHOLD_PX;
+      setHasHiddenLinksRight(hiddenRight);
+    };
+
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(nav);
+    nav.addEventListener("scroll", update, { passive: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      nav.removeEventListener("scroll", update);
+    };
+  }, [links]);
+
   return (
     <header className="border-b border-border bg-background-alt">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -73,7 +106,19 @@ export function DashboardHeader({
               className="h-7 w-auto"
             />
           </Link>
-          <nav className="flex min-w-0 gap-4 overflow-x-auto text-sm">
+          <nav
+            ref={navRef}
+            className="flex min-w-0 gap-4 overflow-x-auto text-sm"
+            style={
+              hasHiddenLinksRight
+                ? {
+                    maskImage: "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+                    WebkitMaskImage:
+                      "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+                  }
+                : undefined
+            }
+          >
             {links.map((l) => (
               <Link
                 key={l.href}

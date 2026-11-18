@@ -30,7 +30,7 @@ export default async function BuscarPage() {
           </div>
         ) : (
           <Card className="mt-8 p-7 text-center">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-none bg-accent/10 text-accent">
               <UserPlus size={20} />
             </div>
             <p className="mt-4 font-medium">

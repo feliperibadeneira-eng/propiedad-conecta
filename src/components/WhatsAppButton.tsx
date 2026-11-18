@@ -36,7 +36,7 @@ export function WhatsAppButton({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
-            className="mt-3 w-full rounded-xl border border-border bg-background-alt p-3 text-sm outline-none focus:border-accent"
+            className="mt-3 w-full rounded-none border border-border bg-background-alt p-3 text-sm outline-none focus:border-accent"
           />
           <div className="mt-4 flex gap-2">
             <Button

@@ -42,7 +42,8 @@ export async function PublicNav() {
                 Ingresar
               </Link>
               <Link href="/buscar" className={buttonClasses("primary", "sm")}>
-                Publicar lo que busco
+                <span className="sm:hidden">Publicar</span>
+                <span className="hidden sm:inline">Publicar lo que busco</span>
               </Link>
             </>
           )}
