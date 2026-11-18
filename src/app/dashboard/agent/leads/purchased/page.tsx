@@ -6,6 +6,7 @@ import { getAgentLeadDashboard } from "@/lib/services/agentProfile";
 import { getUnreadCountsByLeadPurchaseForAgent } from "@/lib/services/conversation";
 import { getRefundEligibleHours } from "@/lib/settings";
 import { isEligibleForRefundCategory } from "@/lib/services/purchase";
+import { refundCategorySchema } from "@/lib/validators/refund";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -120,10 +121,11 @@ export default async function PurchasedLeadsPage({
           <div className="mt-6 space-y-3">
             {filtered.map((p) => {
               const active = OCCUPYING_STATUSES.includes(p.status);
-              const canRequestRefund = isEligibleForRefundCategory(
-                "NO_RESPONSE",
-                p,
-                refundEligibleHours,
+              // El botón aparece si CUALQUIERA de las 3 categorías es
+              // elegible (antes solo chequeaba NO_RESPONSE, de cuando el
+              // motivo era fijo) — el diálogo ya deja elegir las 3.
+              const canRequestRefund = refundCategorySchema.options.some((category) =>
+                isEligibleForRefundCategory(category, p, refundEligibleHours),
               );
               return (
                 <Card key={p.id} className="p-5">

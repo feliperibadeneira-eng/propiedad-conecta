@@ -6,6 +6,7 @@ import { listAgentProperties } from "@/lib/services/properties";
 import { listSharedPropertiesForAgent } from "@/lib/services/propertyShares";
 import { getRefundEligibleHours } from "@/lib/settings";
 import { isEligibleForRefundCategory } from "@/lib/services/purchase";
+import { refundCategorySchema } from "@/lib/validators/refund";
 import { listMessagesForAgent, ConversationError } from "@/lib/services/conversation";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
@@ -59,13 +60,11 @@ export default async function PurchasedLeadDetailPage({
   }
 
   const active = OCCUPYING_STATUSES.includes(purchase.status);
-  // El botón de "Solicitar devolución" sigue siendo solo el motivo
-  // NO_RESPONSE (ver requestRefundAction) hasta que se autorice un
-  // selector de categoría real (etapa de UI, fuera de esta).
-  const canRequestRefund = isEligibleForRefundCategory(
-    "NO_RESPONSE",
-    purchase,
-    refundEligibleHours,
+  // El botón aparece si CUALQUIERA de las 3 categorías es elegible (antes
+  // solo chequeaba NO_RESPONSE, de cuando el motivo era fijo) — el diálogo
+  // ya deja elegir las 3.
+  const canRequestRefund = refundCategorySchema.options.some((category) =>
+    isEligibleForRefundCategory(category, purchase, refundEligibleHours),
   );
 
   return (
