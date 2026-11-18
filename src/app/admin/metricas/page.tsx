@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getMarketplaceMetrics } from "@/lib/services/admin";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
+import { Table, TableHead } from "@/components/ui/Table";
 import { formatUSD } from "@/lib/format";
 import { ADMIN_NAV_LINKS } from "../nav";
 
@@ -98,16 +99,16 @@ export default async function AdminMetricasPage() {
 
         {/* Actividad reciente */}
         <Section title="Actividad reciente" className="mt-10">
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[520px] text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-muted-2">
+          <Card className="p-0">
+            <Table className="min-w-[520px]">
+              <TableHead>
                 <tr>
                   <th className="p-4">Métrica</th>
                   <th className="p-4">Hoy</th>
                   <th className="p-4">Últimos 7 días</th>
                   <th className="p-4">Últimos 30 días</th>
                 </tr>
-              </thead>
+              </TableHead>
               <tbody>
                 <ActivityRow
                   label="Usuarios nuevos"
@@ -127,7 +128,7 @@ export default async function AdminMetricasPage() {
                   last
                 />
               </tbody>
-            </table>
+            </Table>
           </Card>
         </Section>
 
