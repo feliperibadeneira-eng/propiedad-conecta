@@ -23,7 +23,7 @@ export default async function AdminUsersPage({
   return (
     <>
       <DashboardHeader userName={user.name} links={ADMIN_NAV_LINKS} />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Usuarios</h1>
         <div className="mt-4 flex gap-2 text-sm">
           {(["BUYER", "AGENT", "ADMIN"] as const).map((r) => (

@@ -6,6 +6,7 @@ import { getPaymentInstructions, getPayphoneLinks, getDeunaQrImage } from "@/lib
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Table, TableHead } from "@/components/ui/Table";
 import { formatDate, formatUSD } from "@/lib/format";
 import { CREDIT_PURCHASE_STATUS_LABELS } from "@/lib/enums";
 import { AGENT_NAV_LINKS } from "../nav";
@@ -124,30 +125,28 @@ export default async function AgentCreditsPage() {
               Todavía no compraste créditos.
             </Card>
           ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead className="text-left text-xs uppercase tracking-wide text-muted-2">
-                  <tr>
-                    <th className="pb-2">Paquete</th>
-                    <th className="pb-2">Precio</th>
-                    <th className="pb-2">Créditos</th>
-                    <th className="pb-2">Fecha</th>
-                    <th className="pb-2">Estado</th>
+            <Table className="mt-3 min-w-[560px]">
+              <TableHead>
+                <tr>
+                  <th className="pb-2">Paquete</th>
+                  <th className="pb-2">Precio</th>
+                  <th className="pb-2">Créditos</th>
+                  <th className="pb-2">Fecha</th>
+                  <th className="pb-2">Estado</th>
+                </tr>
+              </TableHead>
+              <tbody>
+                {purchases.map((p) => (
+                  <tr key={p.id} className="border-t border-border">
+                    <td className="py-2.5">{CREDIT_PACKAGES[p.package].name}</td>
+                    <td className="py-2.5">{formatUSD(p.amount)}</td>
+                    <td className="py-2.5">{p.credits}</td>
+                    <td className="py-2.5">{formatDate(p.createdAt)}</td>
+                    <td className="py-2.5">{CREDIT_PURCHASE_STATUS_LABELS[p.status]}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {purchases.map((p) => (
-                    <tr key={p.id} className="border-t border-border">
-                      <td className="py-2.5">{CREDIT_PACKAGES[p.package].name}</td>
-                      <td className="py-2.5">{formatUSD(p.amount)}</td>
-                      <td className="py-2.5">{p.credits}</td>
-                      <td className="py-2.5">{formatDate(p.createdAt)}</td>
-                      <td className="py-2.5">{CREDIT_PURCHASE_STATUS_LABELS[p.status]}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </Table>
           )}
         </div>
 
@@ -158,31 +157,29 @@ export default async function AgentCreditsPage() {
               Todavía no hay movimientos.
             </Card>
           ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead className="text-left text-xs uppercase tracking-wide text-muted-2">
-                  <tr>
-                    <th className="pb-2">Fecha</th>
-                    <th className="pb-2">Descripción</th>
-                    <th className="pb-2">Créditos</th>
-                    <th className="pb-2">Saldo resultante</th>
+            <Table className="mt-3 min-w-[560px]">
+              <TableHead>
+                <tr>
+                  <th className="pb-2">Fecha</th>
+                  <th className="pb-2">Descripción</th>
+                  <th className="pb-2">Créditos</th>
+                  <th className="pb-2">Saldo resultante</th>
+                </tr>
+              </TableHead>
+              <tbody>
+                {ledger.map((e) => (
+                  <tr key={e.id} className="border-t border-border">
+                    <td className="py-2.5">{formatDate(e.createdAt)}</td>
+                    <td className="py-2.5">{e.description ?? e.reason}</td>
+                    <td className={`py-2.5 font-medium ${e.amount >= 0 ? "text-success" : "text-danger"}`}>
+                      {e.amount >= 0 ? "+" : ""}
+                      {e.amount}
+                    </td>
+                    <td className="py-2.5">{e.balanceAfter}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {ledger.map((e) => (
-                    <tr key={e.id} className="border-t border-border">
-                      <td className="py-2.5">{formatDate(e.createdAt)}</td>
-                      <td className="py-2.5">{e.description ?? e.reason}</td>
-                      <td className={`py-2.5 font-medium ${e.amount >= 0 ? "text-success" : "text-danger"}`}>
-                        {e.amount >= 0 ? "+" : ""}
-                        {e.amount}
-                      </td>
-                      <td className="py-2.5">{e.balanceAfter}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </Table>
           )}
         </div>
       </main>

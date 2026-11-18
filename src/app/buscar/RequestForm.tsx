@@ -267,7 +267,7 @@ export function RequestForm() {
       </Card>
 
       {state.error && (
-        <p className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger">
+        <p className="rounded-none bg-danger-bg px-4 py-3 text-sm text-danger">
           {state.error}
         </p>
       )}

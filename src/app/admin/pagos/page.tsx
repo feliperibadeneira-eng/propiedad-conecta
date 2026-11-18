@@ -3,6 +3,7 @@ import { listPayments } from "@/lib/services/admin";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Table, TableHead } from "@/components/ui/Table";
 import { formatDate } from "@/lib/format";
 import { PAYMENT_STATUS_LABELS } from "@/lib/enums";
 import { ADMIN_NAV_LINKS } from "../nav";
@@ -26,9 +27,9 @@ export default async function AdminPaymentsPage() {
       <DashboardHeader userName={user.name} links={ADMIN_NAV_LINKS} />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Pagos</h1>
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-2">
+        <>
+          <Table className="mt-5 min-w-[720px]">
+            <TableHead>
               <tr>
                 <th className="pb-2">Transacción</th>
                 <th className="pb-2">Agente</th>
@@ -36,7 +37,7 @@ export default async function AdminPaymentsPage() {
                 <th className="pb-2">Estado</th>
                 <th className="pb-2">Fecha</th>
               </tr>
-            </thead>
+            </TableHead>
             <tbody>
               {payments.map((p) => (
                 <tr key={p.id} className="border-t border-border">
@@ -54,13 +55,13 @@ export default async function AdminPaymentsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
           {payments.length === 0 && (
             <Card className="mt-4 p-8 text-center text-sm text-muted">
               Todavía no hay pagos.
             </Card>
           )}
-        </div>
+        </>
       </main>
     </>
   );

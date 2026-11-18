@@ -4,6 +4,7 @@ import { CREDIT_PACKAGES } from "@/lib/services/creditPackages";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Table, TableHead } from "@/components/ui/Table";
 import { buttonClasses } from "@/components/ui/Button";
 import { formatDate, formatUSD } from "@/lib/format";
 import { CREDIT_PURCHASE_STATUS_LABELS } from "@/lib/enums";
@@ -27,7 +28,7 @@ export default async function AdminCreditPurchasesPage() {
   return (
     <>
       <DashboardHeader userName={user.name} links={ADMIN_NAV_LINKS} />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">
           Compras de créditos
         </h1>
@@ -83,9 +84,9 @@ export default async function AdminCreditPurchasesPage() {
         )}
 
         <h2 className="mt-8 font-semibold">Historial completo</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-2">
+        <>
+          <Table className="mt-3 min-w-[720px]">
+            <TableHead>
               <tr>
                 <th className="pb-2">Agente</th>
                 <th className="pb-2">Paquete</th>
@@ -95,7 +96,7 @@ export default async function AdminCreditPurchasesPage() {
                 <th className="pb-2">Estado</th>
                 <th className="pb-2">Comprobante</th>
               </tr>
-            </thead>
+            </TableHead>
             <tbody>
               {purchases.map((p) => (
                 <tr key={p.id} className="border-t border-border">
@@ -126,13 +127,13 @@ export default async function AdminCreditPurchasesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
           {purchases.length === 0 && (
             <Card className="mt-4 p-8 text-center text-sm text-muted">
               Todavía no hay compras de créditos.
             </Card>
           )}
-        </div>
+        </>
       </main>
     </>
   );
